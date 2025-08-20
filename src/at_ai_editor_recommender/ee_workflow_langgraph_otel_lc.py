@@ -108,17 +108,5 @@ def main():
             print(step)
             print("\n")
     
-# # Invoke
-# manuscript_submission = ManuscriptSubmission(
-#     manuscript_id="MS12345",
-#     coden="JAST",
-#     journal="Journal of Advanced Science and Technology",
-#     title="A Novel Approach to Quantum Computing",
-#     abstract="This manuscript presents a new method for quantum computation using advanced algorithms and hardware."
-# )
 
-# with start_trace("manuscript-editor-assignment"):
-#     for step in prompt_chaining_workflow.stream(manuscript_submission, stream_mode="updates"):
-#         print(step)
-#         print("\n")
 
