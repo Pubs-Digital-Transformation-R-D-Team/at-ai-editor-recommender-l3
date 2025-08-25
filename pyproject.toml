@@ -5,7 +5,9 @@ description = "AI editor recommender"
 readme = "README.md"
 requires-python = "==3.12.*"
 dependencies = [
+    "aiohttp>=3.12.15",
     "boto3>=1.40.6",
+    "fastapi>=0.116.1",
     "langchain-aws>=0.2.30",
     "langchain-mcp-adapters>=0.1.9",
     "langgraph>=0.6.4",
@@ -22,3 +24,9 @@ ee-workflow = "at_ai_editor_recommender.ee_workflow_langgraph_otel:main"
 [build-system]
 requires = ["uv_build>=0.8,<0.9"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "langgraph-cli[inmem]>=0.3.7",
+    "streamlit>=1.48.1",
+]

@@ -1,5 +1,6 @@
 import boto3
 import os
+import asyncio
 
 DEFAULT_MODEL_ID = 'us.amazon.nova-premier-v1:0'
 DEFAULT_SYSTEM = [{ "text": "You are a helpful assistant" }]
@@ -20,11 +21,10 @@ def llm_call(client, text:str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
         }
     }
 
-
     messages = [
         {"role": "user", "content": [{"text": text}]},
     ]
-
+    
     model_response = client.converse(
         modelId=modelId, 
         messages=messages, 
@@ -34,6 +34,9 @@ def llm_call(client, text:str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
     )
 
     return model_response["output"]["message"]["content"][0]["text"]
+
+async def async_llm_call(*args, **kwargs):
+    return await asyncio.to_thread(llm_call, *args, **kwargs)
 
 def load_mock_editor(id):
     """
