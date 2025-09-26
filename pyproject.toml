@@ -16,6 +16,7 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.36.0",
     "opentelemetry-instrumentation-botocore>=0.57b0",
     "opentelemetry-sdk>=1.36.0",
+    "uvicorn>=0.35.0",
 ]
 
 [project.scripts]

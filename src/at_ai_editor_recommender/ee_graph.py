@@ -1,10 +1,9 @@
-import re
-from urllib import response
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict, Annotated, Literal, Optional, ClassVar
 from openinference.instrumentation.langchain import LangChainInstrumentor, get_current_span
 from openinference.instrumentation.bedrock import BedrockInstrumentor
+from openinference.instrumentation import using_prompt_template
 from opentelemetry import trace as trace_api
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk import trace as trace_sdk
@@ -21,8 +20,10 @@ import logging
 import aiohttp
 from dotenv import load_dotenv
 from contextlib import contextmanager
-from at_ai_editor_recommender.utils import load_mock_editor, llm_call, async_llm_call
-from at_ai_editor_recommender.prompts import get_editor_assignment_prompt, get_verification_prompt
+from at_ai_editor_recommender.utils import async_llm_call, load_file
+from at_ai_editor_recommender.prompts import EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V2
+from at_ai_editor_recommender.editor_assignment_json_parser import EditorAssignmentJsonParser
+from pathlib import Path
 
 load_dotenv()
 
@@ -30,18 +31,23 @@ load_dotenv()
 class ManuscriptSubmission:
     manuscript_number: str
     coden: str
-    manuscript_type: str
-    manuscript_title: str
-    manuscript_abstract: str
+    # manuscript_type: str
+    # manuscript_title: str
+    # manuscript_abstract: str
 
 # Define the state schema
 class State(TypedDict):
     manuscript_submission: ManuscriptSubmission
+    manuscript_information: str | None
     available_editors: str | None
     editor_assignment_result: str | None
     verification_result: str | None
     editor_id: str | None
     assignment_result: str | None
+    reasoning: str | None
+    expertise_factor: str | None
+    workload_factor:str | None
+    runner_up: str | None
 
 class EditorAssignmentWorkflow:
 
@@ -55,6 +61,7 @@ class EditorAssignmentWorkflow:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initializing EditorAssignmentWorkflow")
         self._ee_url = os.getenv("EE_URL")
+        self._ee_base_url = os.getenv("EE_BASE_URL")
         self._tracer = None
         self._tracer_provider = None
         self._graph: Optional[CompiledStateGraph] = None
@@ -89,10 +96,10 @@ class EditorAssignmentWorkflow:
     
 
     def _setup_bedrock_client(self):
-        session = boto3.session.Session()
-        return session.client('bedrock-runtime', region_name=self._region_name)
+        client = boto3.client('bedrock-runtime', region_name='us-east-1')
+        return client
 
-    async def _traced_llm_call(self, text):
+    async def _traced_llm_call(self, text:str):
         span = get_current_span()
         ctx = set_span_in_context(span)
         token = attach(ctx)
@@ -102,55 +109,113 @@ class EditorAssignmentWorkflow:
             detach(token)
         return msg
 
-    async def _get_available_editors(self, state):
+    def _journal_specific_rules(self, coden):
+
+        # Assume the project root is one directory above src
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+        prompts_root = os.path.join(project_root, "prompts")
+        
+        journal_specific_rules_default = os.path.join(prompts_root, "journal_specific_rules", "DEFAULT.md")
+        journal_specific_rules_path = os.path.join(prompts_root, "journal_specific_rules", f"{coden}.md")
+
+        if os.path.exists(journal_specific_rules_path):
+            journal_specific_rules = load_file(journal_specific_rules_path)
+            self.logger.info(f"Loaded journal specific rules from {journal_specific_rules_path}")
+        else:
+            # Fallback to default
+            journal_specific_rules = load_file(journal_specific_rules_default)
+            self.logger.info(f"Loaded default rules from {journal_specific_rules_default}")
+
+        return journal_specific_rules
+
+  
+
+    async def _get_manuscript_with_editors(self, state):
+        """
+        Fetch manuscript information and available editors in a single API call.
+        """
         manuscript_submission = state["manuscript_submission"]
         manuscript_number = manuscript_submission.manuscript_number
-        if not self._ee_url:
-            raise RuntimeError("Please provide EE_URL")
-        url = f"{self._ee_url}?manuscript={manuscript_number}"
+        if not self._ee_base_url:
+            raise RuntimeError("Please provide EE_BASE_URL")
+        url = f"{self._ee_base_url}/editor_assignment_protocol/manuscript/{manuscript_number}"
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
-        return {"available_editors": data}
+        return data  # { "manuscript_information": ..., "available_editors": ... }
+
 
     async def _editor_assignment(self, state):
+        manuscript_submission = state["manuscript_submission"]
+
+        manuscript_information = state["manuscript_information"]
         available_editors = state["available_editors"]
-        text = get_editor_assignment_prompt(available_editors)
-        msg = await self._traced_llm_call(text)
-        return {"editor_assignment_result": msg}
+
+        journal_specific_rules = self._journal_specific_rules(manuscript_submission.coden)
+        # prompt_template = self._prepare_prompt(manuscript_submission.coden)
+
+        text = EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V2.format(
+            journal_specific_rules=journal_specific_rules,
+            manuscript_information=manuscript_information,
+            available_editors=available_editors
+        )
+
+        # for tracing
+        with using_prompt_template(
+            template = EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V2,
+            variables = {"journal_specific_rules": journal_specific_rules,
+                         "manuscript_information": manuscript_information, 
+                         "available_editors": available_editors},
+            version = "v1.0"
+        ):
+            msg = await self._traced_llm_call(text)
+            return {"editor_assignment_result": msg}
 
     async def _verification(self, state):
         editor_assignment_result = state["editor_assignment_result"]
         available_editors = state["available_editors"]
-        text = get_verification_prompt(editor_assignment_result, available_editors)
-        msg = await self._traced_llm_call(text)
+
+        msg = "Verification passed"
         return {"verification_result": msg}
 
-    def extract_selected_editor(self, response: str) -> str | None:
-        match = re.search(r"Selected Editor:\s*([A-Z0-9\-X]+)", response, re.IGNORECASE)
-        if match:
-            return match.group(1)
-        return None
+    def extract_editor_assignment_output(self, llm_output:str):
+        result = EditorAssignmentJsonParser.parse(llm_output)
+        return result
 
 
     async def _assign_editor(self, state):
         manuscript_submission = state["manuscript_submission"]
-        # editor_id = "0001"
-        editor_id = self.extract_selected_editor(state["editor_assignment_result"]) 
+
+        output = self.extract_editor_assignment_output(state["editor_assignment_result"])
+        print(output)
+        editor_id = output["selectedEditorOrcId"]
+        reasoning = output["reasoning"]
+        editor_person_id = output["selectedEditorPersonId"]
+        filtered_out_editors = output["filteredOutEditors"]
+        # expertise_factor = output.get("Expertise Factor", "")
+        # expertise_factor = output["Expertise Factor"]
+        # workload_factor = output["Workload Factor"]
+
+        runner_up = output["runnerUp"]
+
         result = f"Editor with editor_id of {editor_id} assigned to manuscript_number: {manuscript_submission.manuscript_number}"
-        return {"editor_id": editor_id, "assignment_result": result}
+        return {"editor_id": editor_id, 
+                "editor_person_id": editor_person_id,
+                "assignment_result": result, 
+                "reasoning": reasoning,
+                "filtered_out_editors": filtered_out_editors,
+                "runner_up": runner_up}
 
     def _build_graph(self):
         graph = StateGraph(State)
-
-        graph.add_node("get_available_editors", self._get_available_editors)
+        graph.add_node("get_manuscript_with_editors", self._get_manuscript_with_editors)
         graph.add_node("editor_assignment", self._editor_assignment)
         graph.add_node("verification", self._verification)
         graph.add_node("assign_editor", self._assign_editor)
         
-        graph.add_edge(START, "get_available_editors")
-        graph.add_edge("get_available_editors", "editor_assignment")
+        graph.add_edge(START, "get_manuscript_with_editors")
+        graph.add_edge("get_manuscript_with_editors", "editor_assignment")
         graph.add_edge("editor_assignment", "verification")
         graph.add_edge("verification", "assign_editor")
         graph.add_edge("assign_editor", END)
@@ -176,25 +241,3 @@ class EditorAssignmentWorkflow:
             return final_state
            
 
-async def main():
-
-    manuscript_submission = ManuscriptSubmission(
-        manuscript_number="jm-2024-02780t",
-        coden="jmcmar",
-        # journal="Journal of Advanced Science and Technology",
-        manuscript_type="Article",
-        manuscript_title="Investigation of the ameliorative effects of amygdalin against arsenic trioxide-induced cardiac toxicity in rat",
-        manuscript_abstract="Amygdalin, recognized as vitamin B17, is celebrated for its antioxidant and anti-inflammatory prowess, which underpins its utility in averting disease and decelerating the aging process. This study ventures to elucidate the cardioprotective mechanisms of amygdalin against arsenic trioxide (ATO)-induced cardiac injury, with a spotlight on the AMP-activated protein kinase (AMPK) and sirtuin-1 (SIRT1) signaling cascade. Employing a Sprague-Dawley rat model, we administered amygdalin followed by ATO and conducted a 15-day longitudinal study. Our findings underscore the ameliorative impact of amygdalin on histopathological cardiac anomalies, a reduction in cardiac biomarkers, and an invigoration of antioxidant defenses, thereby attenuating oxidative stress and inflammation. Notably, amygdalin's intervention abrogated ATO-induced apoptosis and inflammatory cascades, modulating key proteins along the AMPK/SIRT1 pathway and significantly dampening inflammation. Collectively, these insights advocate for amygdalin's role as a guardian against ATO-induced cardiotoxicity, potentially through the activation of the AMPK/SIRT1 axis, offering a novel therapeutic vista in mitigating oxidative stress, apoptosis, and inflammation."
-    )
-
-    workflow = EditorAssignmentWorkflow()
-    await workflow.async_execute_workflow(manuscript_submission)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    asyncio.run(main())
