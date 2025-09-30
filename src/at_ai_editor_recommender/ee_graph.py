@@ -96,8 +96,21 @@ class EditorAssignmentWorkflow:
     
 
     def _setup_bedrock_client(self):
+        self.logger.info("Setting up Bedrock client with region: %s", self._region_name)
+        
+        # Create session with more debugging
         session = boto3.session.Session()
-        client = session.client('bedrock-runtime', region_name='us-east-1')
+        credentials = session.get_credentials()
+        
+        # Log credential information for debugging
+        if credentials:
+            self.logger.info(f"Found AWS credentials with access key ID: {credentials.access_key[:5]}...")
+            self.logger.info(f"Token available: {credentials.token is not None}")
+        else:
+            self.logger.warning("No AWS credentials detected!")
+        
+        # Create the client with the region
+        client = session.client('bedrock-runtime', region_name=self._region_name)
         return client
 
     async def _traced_llm_call(self, text:str):
