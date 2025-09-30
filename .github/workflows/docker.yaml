@@ -37,8 +37,9 @@ jobs:
       - name: Get version from uv
         id: version
         run: |
-          version=$(uv version | awk '{print $2}')
+          version=$(uv version | awk '{print $2}' | tr -d '\n')
           echo "version=$version" >> $GITHUB_OUTPUT
+          echo "Extracted version: $version"
 
       - name: Get short SHA
         id: sha
