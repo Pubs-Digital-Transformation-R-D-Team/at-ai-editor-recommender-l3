@@ -96,7 +96,8 @@ class EditorAssignmentWorkflow:
     
 
     def _setup_bedrock_client(self):
-        client = boto3.client('bedrock-runtime', region_name='us-east-1')
+        session = boto3.session.Session()
+        client = session.client('bedrock-runtime', region_name='us-east-1')
         return client
 
     async def _traced_llm_call(self, text:str):
