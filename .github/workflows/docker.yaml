@@ -52,7 +52,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=v{{ steps.pyproject_version.outputs.version}}
+            type=raw,value=v{{ steps.pyproject_version.outputs.version }}
             type=semver,pattern={{version}}
             type=sha
             type=raw,value=latest
