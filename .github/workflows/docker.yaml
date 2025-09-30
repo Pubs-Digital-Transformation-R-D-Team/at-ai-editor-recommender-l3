@@ -35,7 +35,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Get version from uv
-        id: version
+        id: pyproject_version
         run: |
           version=$(uv version | awk '{print $2}' | tr -d '\n')
           echo "version=$version" >> $GITHUB_OUTPUT
@@ -52,7 +52,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=v{{steps.version.outputs.version}}
+            type=raw,value=v{{ steps.pyproject_version.outputs.version}}
             type=semver,pattern={{version}}
             type=sha
             type=raw,value=latest
