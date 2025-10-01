@@ -83,7 +83,7 @@ class EditorAssignmentWorkflow:
             self._tracer = trace_api.get_tracer("ee-workflow-langgraph")
             
             # Instrument both Bedrock and Langchain
-            # BedrockInstrumentor().instrument(tracer_provider=self._tracer_provider)
+            BedrockInstrumentor().instrument(tracer_provider=self._tracer_provider)
             LangChainInstrumentor().instrument(tracer_provider=self._tracer_provider)
 
     

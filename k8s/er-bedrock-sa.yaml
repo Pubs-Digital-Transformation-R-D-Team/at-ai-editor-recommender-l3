@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: er-bedrock-sa
+  namespace: er
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::288761754490:role/er-bedrock-role

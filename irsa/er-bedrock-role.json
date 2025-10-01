@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::288761754490:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/A72FEBCCFC8B0FFABD7525F3EFEFEA49"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.us-east-1.amazonaws.com/id/A72FEBCCFC8B0FFABD7525F3EFEFEA49:sub": "system:serviceaccount:er:er-bedrock-sa",
+          "oidc.eks.us-east-1.amazonaws.com/id/A72FEBCCFC8B0FFABD7525F3EFEFEA49:aud": "sts.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
