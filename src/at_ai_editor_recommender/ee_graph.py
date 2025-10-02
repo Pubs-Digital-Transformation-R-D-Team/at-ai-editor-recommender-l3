@@ -24,6 +24,7 @@ from at_ai_editor_recommender.utils import async_llm_call, load_file
 from at_ai_editor_recommender.prompts import EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V2
 from at_ai_editor_recommender.editor_assignment_json_parser import EditorAssignmentJsonParser
 from pathlib import Path
+import aioboto3
 
 load_dotenv()
 
@@ -99,15 +100,16 @@ class EditorAssignmentWorkflow:
         self.logger.info("Setting up Bedrock client with region: %s", self._region_name)
         
         # Create session with more debugging
-        session = boto3.session.Session()
-        credentials = session.get_credentials()
+        # session = boto3.session.Session()
+        session = aioboto3.Session()
+        # credentials = session.get_credentials()
         
-        # Log credential information for debugging
-        if credentials:
-            self.logger.info(f"Found AWS credentials with access key ID: {credentials.access_key[:5]}...")
-            self.logger.info(f"Token available: {credentials.token is not None}")
-        else:
-            self.logger.warning("No AWS credentials detected!")
+        # # Log credential information for debugging
+        # if credentials:
+        #     self.logger.info(f"Found AWS credentials with access key ID: {credentials.access_key[:5]}...")
+        #     self.logger.info(f"Token available: {credentials.token is not None}")
+        # else:
+        #     self.logger.warning("No AWS credentials detected!")
         
         # Create the client with the region
         client = session.client('bedrock-runtime', region_name=self._region_name)
