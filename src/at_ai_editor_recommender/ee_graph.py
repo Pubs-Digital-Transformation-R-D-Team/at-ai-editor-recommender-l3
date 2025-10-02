@@ -69,7 +69,8 @@ class EditorAssignmentWorkflow:
         self._model_id = model_id
         self._region_name = region_name
         self._initialize_tracing()
-        self._client = client or self._setup_bedrock_client()
+        # self._client = client or self._setup_bedrock_client()
+        self._session = aioboto3.Session()  
         self._graph = self._build_graph()
         self.logger.info("Done initializing EditorAssignmentWorkflow")
 
@@ -115,15 +116,18 @@ class EditorAssignmentWorkflow:
         client = session.client('bedrock-runtime', region_name=self._region_name)
         return client
 
-    async def _traced_llm_call(self, text:str):
+    async def _traced_llm_call(self, text: str):
         span = get_current_span()
-        ctx = set_span_in_context(span)
-        token = attach(ctx)
+        token = attach(set_span_in_context(span))
         try:
-            msg = await async_llm_call(self._client, text, modelId=self._model_id)
+            return await async_llm_call(
+                text,
+                modelId=self._model_id,
+                session=self._session,             # reuse session
+                region_name=self._region_name,
+            )
         finally:
             detach(token)
-        return msg
 
     def _journal_specific_rules(self, coden):
 

@@ -1,7 +1,7 @@
 import os
 import asyncio
 from typing import List, Dict, Any
-
+import aioboto3  
 
 
 DEFAULT_MODEL_ID = 'us.amazon.nova-premier-v1:0'
@@ -43,29 +43,28 @@ def llm_call(client, text:str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
 #     return await asyncio.to_thread(llm_call, *args, **kwargs)
 
 
-async def async_llm_call(client, text: str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
+async def async_llm_call(
+    text: str,
+    *,
+    modelId: str = DEFAULT_MODEL_ID,
+    region_name: str = "us-east-1",
+    session: aioboto3.Session | None = None,
+) -> str:
+    """Native async Bedrock converse call reused with a shared aioboto3.Session."""
     inf_params = {"maxTokens": 4096, "topP": 0.1, "temperature": 0.0}
-    
-    additionalModelRequestFields = {
-        "inferenceConfig": {
-            "topK": 20
-        }
-    }
+    additionalModelRequestFields = {"inferenceConfig": {"topK": 20}}
+    messages = [{"role": "user", "content": [{"text": text}]}]
 
-    messages = [
-        {"role": "user", "content": [{"text": text}]},
-    ]
-    
-    # If client is async aioboto3 client
-    async with client as bedrock_client:
-        model_response = await bedrock_client.converse(
-            modelId=modelId, 
-            messages=messages, 
+    sess = session or aioboto3.Session()          # fall back to one-off session
+    async with sess.client("bedrock-runtime", region_name=region_name) as br:
+        resp = await br.converse(
+            modelId=modelId,
+            messages=messages,
             inferenceConfig=inf_params,
-            additionalModelRequestFields=additionalModelRequestFields
+            additionalModelRequestFields=additionalModelRequestFields,
         )
 
-    return model_response["output"]["message"]["content"][0]["text"]
+    return resp["output"]["message"]["content"][0]["text"]
 
 
 def load_file(filename):
