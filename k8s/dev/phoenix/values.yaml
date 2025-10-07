@@ -1,0 +1,11 @@
+image:
+  tag: 11.37.0-nonroot
+database:
+  url: "sqlite:///:memory:"
+postgresql:
+  enabled: false
+persistence:
+  enabled: false
+  inMemory: true
+auth:
+  enableAuth: false

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ee-api
+  namespace: er
+  labels:
+    app: ee-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ee-api
+  template:
+    metadata:
+      labels:
+        app: ee-api
+    spec:
+      containers:
+      - name: ee-api
+        image: ghcr.io/acspubsedsg/at-ai-editor-recommender-api:v0.1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8010
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+          requests:
+            cpu: "100m"
+            memory: "1024Mi"
+      imagePullSecrets:
+      - name: er-ghcr-secret

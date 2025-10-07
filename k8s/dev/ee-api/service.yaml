@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ee-api-svc
+  namespace: er
+spec:
+  selector:
+    app: ee-api
+  ports:
+  - port: 8003
+    targetPort: 8003
+  type: ClusterIP

@@ -6,9 +6,13 @@ import uvicorn
 import logging
 from contextlib import asynccontextmanager
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8012
+MODEL_ID = os.getenv("MODEL_ID", "us.amazon.nova-premier-v1:0")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +48,7 @@ workflow = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
      # Initialize workflow once
-    workflow["ee"] = EditorAssignmentWorkflow()
+    workflow["ee"] = EditorAssignmentWorkflow(model_id=MODEL_ID)
     yield
 
 logger = logging.getLogger(__name__)

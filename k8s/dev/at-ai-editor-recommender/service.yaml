@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: at-ai-editor-recommender-svc
+  namespace: er
+spec:
+  selector:
+    app: at-ai-editor-recommender
+  ports:
+  - port: 8012
+    targetPort: 8012
+  type: ClusterIP

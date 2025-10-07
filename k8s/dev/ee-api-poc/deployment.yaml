@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ee-api-poc
+  namespace: er
+  labels:
+    app: ee-api-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ee-api-poc
+  template:
+    metadata:
+      labels:
+        app: ee-api-poc
+    spec:
+      containers:
+      - name: ee-api-poc
+        image: ghcr.io/pubs-digital-transformation-r-d-team/ee-api-poc/ee-api-poc:0.1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8010
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+          requests:
+            cpu: "100m"
+            memory: "1024Mi"
+      imagePullSecrets:
+      - name: er-ghcr-secret

@@ -61,6 +61,7 @@ class EditorAssignmentWorkflow:
     def __init__(self, client=None, model_id=DEFAULT_MODEL_ID, region_name=REGION_NAME):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initializing EditorAssignmentWorkflow")
+        self.logger.info("Using model_id: %s", model_id)
         self._ee_url = os.getenv("EE_URL")
         self._ee_base_url = os.getenv("EE_BASE_URL")
         self._tracer = None
@@ -208,7 +209,7 @@ class EditorAssignmentWorkflow:
         manuscript_submission = state["manuscript_submission"]
 
         output = self.extract_editor_assignment_output(state["editor_assignment_result"])
-        print(output)
+        self.logger.info("Editor assignment result: %s", output)
         editor_id = output["selectedEditorOrcId"]
         reasoning = output["reasoning"]
         editor_person_id = output["selectedEditorPersonId"]
