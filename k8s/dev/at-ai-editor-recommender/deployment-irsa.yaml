@@ -18,7 +18,7 @@ spec:
       serviceAccountName: er-bedrock-sa
       containers:
       - name: at-ai-editor-recommender
-        image: ghcr.io/acspubsedsg/at-ai-editor-recommender:v0.1.6
+        image: ghcr.io/acspubsedsg/at-ai-editor-recommender:v0.1.8
         ports:
         - containerPort: 8012
         resources:
@@ -33,5 +33,7 @@ spec:
           value: http://phoenix-svc.phoenix.svc.cluster.local:6006/v1/traces
         - name: EE_BASE_URL
           value: http://ee-api-poc-svc.er.svc.cluster.local:8010
+        - name: EE_URL
+          value: http://ee-api-svc.er.svc.cluster.local:8005/v1/processManuscript
       imagePullSecrets:
       - name: er-ghcr-secret

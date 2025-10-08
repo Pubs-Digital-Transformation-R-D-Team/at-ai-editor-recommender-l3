@@ -1,0 +1,13 @@
+{% if editors %}
+{% for editor in editors %}
+### EDITOR {{loop.index}} ###
+- Editor ORCID: {{editor.ORCID}}
+- Editor personId: {{editor.personId}}
+- Editor Role: {{editor.role}}
+- Editor Institution: {{editor.institution}}
+- workload-expertise rank: {{editor.workloadModifiedExpertiseRanking}}
+====================================================================
+{% endfor %}
+{% else %}
+No editors available, Do not assign
+{% endif %}

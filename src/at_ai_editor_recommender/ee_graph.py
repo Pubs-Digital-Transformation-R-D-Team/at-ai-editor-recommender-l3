@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from at_ai_editor_recommender.utils import async_llm_call, load_file
 from at_ai_editor_recommender.prompts import EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V2
 from at_ai_editor_recommender.editor_assignment_json_parser import EditorAssignmentJsonParser
+from at_ai_editor_recommender.ee_api_adapter import get_adapter_for_url
 from pathlib import Path
 import aioboto3
 
@@ -149,22 +150,33 @@ class EditorAssignmentWorkflow:
 
         return journal_specific_rules
 
-  
-
     async def _get_manuscript_with_editors(self, state):
         """
         Fetch manuscript information and available editors in a single API call.
         """
         manuscript_submission = state["manuscript_submission"]
         manuscript_number = manuscript_submission.manuscript_number
-        if not self._ee_base_url:
-            raise RuntimeError("Please provide EE_BASE_URL")
-        url = f"{self._ee_base_url}/editor_assignment_protocol/manuscript/{manuscript_number}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-        return data  # { "manuscript_information": ..., "available_editors": ... }
+        journal_id = manuscript_submission.coden
+        adapter = get_adapter_for_url(self._ee_url)
+        self.logger.info(f"Using adapter: {adapter.__class__.__name__} for URL: {self._ee_url}")
+        result = await adapter.get_manuscript_with_editors(manuscript_number, journal_id)
+        self.logger.info(f"Fetched manuscript and editors for manuscript_number: {manuscript_number}, journal_id: {journal_id}")
+        return result  # { "manuscript_information": ..., "available_editors": ...
+
+    # async def _get_manuscript_with_editors(self, state):
+    #     """
+    #     Fetch manuscript information and available editors in a single API call.
+    #     """
+    #     manuscript_submission = state["manuscript_submission"]
+    #     manuscript_number = manuscript_submission.manuscript_number
+    #     if not self._ee_base_url:
+    #         raise RuntimeError("Please provide EE_BASE_URL")
+    #     url = f"{self._ee_base_url}/editor_assignment_protocol/manuscript/{manuscript_number}"
+    #     async with aiohttp.ClientSession() as session:
+    #         async with session.get(url) as resp:
+    #             resp.raise_for_status()
+    #             data = await resp.json()
+    #     return data  # { "manuscript_information": ..., "available_editors": ... }
 
 
     async def _editor_assignment(self, state):

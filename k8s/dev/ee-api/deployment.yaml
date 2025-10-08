@@ -20,7 +20,7 @@ spec:
         image: ghcr.io/acspubsedsg/at-ai-editor-recommender-api:v0.1.0
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8010
+        - containerPort: 8003
         resources:
           limits:
             cpu: "500m"
