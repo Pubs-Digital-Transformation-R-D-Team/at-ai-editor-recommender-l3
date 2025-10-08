@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox-efs-test
+  namespace: er
+spec:
+  securityContext:
+    runAsUser: 3502
+    runAsGroup: 102
+  containers:
+  - name: busybox
+    image: busybox
+    command: [ "sleep", "3600" ]
+    volumeMounts:
+    - name: efs-storage
+      mountPath: /NAS/er
+    - name: aimodels-storage
+      mountPath: /NAS/AIMODELS
+  volumes:
+  - name: efs-storage
+    persistentVolumeClaim:
+      claimName: er-efs-pvc
+  - name: aimodels-storage
+    persistentVolumeClaim:
+      claimName: er-onprem-aimodels-pvc
