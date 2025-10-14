@@ -1,6 +1,6 @@
 [project]
 name = "at-ai-editor-recommender"
-version = "0.3.0"
+version = "0.3.1"
 description = "AI editor recommender"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -19,7 +19,8 @@ dependencies = [
     "opentelemetry-sdk>=1.36.0",
     "uvicorn>=0.35.0",
     "anthropic",
-    "openinference-instrumentation-anthropic"
+    "openinference-instrumentation-anthropic",
+    "jinja2>=3.1.6",
 ]
 
 [project.scripts]
