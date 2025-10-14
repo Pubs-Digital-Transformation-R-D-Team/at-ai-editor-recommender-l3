@@ -89,11 +89,14 @@ class EeMarkdownApiAdapter(EeApiAdapter):
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 resp.raise_for_status()
-                return await resp.text()  # Let subclass decide how to parse
+                # return await resp.text()  # Let subclass decide how to parse
+                data = await resp.json()
+                return data  # { "manuscript_information": ..., "available_editors": ... }
 
     async def get_manuscript_with_editors(self, manuscript_number: str, journal_id: str = None):
         raw = await self.fetch_raw_data(manuscript_number)
         # { "manuscript_information": ..., "available_editors": ... }
+
         return raw
 
 

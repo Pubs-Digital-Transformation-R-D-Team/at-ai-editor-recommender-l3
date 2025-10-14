@@ -2,6 +2,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict, Annotated, Literal, Optional, ClassVar
 from openinference.instrumentation.langchain import LangChainInstrumentor, get_current_span
+from openinference.instrumentation.anthropic import AnthropicInstrumentor
 from openinference.instrumentation.bedrock import BedrockInstrumentor
 from openinference.instrumentation import using_prompt_template
 from opentelemetry import trace as trace_api
@@ -20,12 +21,13 @@ import logging
 import aiohttp
 from dotenv import load_dotenv
 from contextlib import contextmanager
-from at_ai_editor_recommender.utils import async_llm_call, load_file
+from at_ai_editor_recommender.utils import async_llm_call, load_file, anthropic_llm_call
 from at_ai_editor_recommender.prompts import EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3
 from at_ai_editor_recommender.editor_assignment_json_parser import EditorAssignmentJsonParser
 from at_ai_editor_recommender.ee_api_adapter import get_adapter_for_url
 from pathlib import Path
-import aioboto3
+# import aioboto3
+from anthropic import AsyncAnthropicBedrock
 
 load_dotenv()
 
@@ -71,8 +73,8 @@ class EditorAssignmentWorkflow:
         self._model_id = model_id
         self._region_name = region_name
         self._initialize_tracing()
-        # self._client = client or self._setup_bedrock_client()
-        self._session = aioboto3.Session()  
+        self._client = client or self._setup_bedrock_client()
+        # self._session = aioboto3.Session()  
         self._graph = self._build_graph()
         self.logger.info("Done initializing EditorAssignmentWorkflow")
 
@@ -87,7 +89,8 @@ class EditorAssignmentWorkflow:
             self._tracer = trace_api.get_tracer("ee-workflow-langgraph")
             
             # Instrument both Bedrock and Langchain
-            BedrockInstrumentor().instrument(tracer_provider=self._tracer_provider)
+            # BedrockInstrumentor().instrument(tracer_provider=self._tracer_provider)
+            AnthropicInstrumentor().instrument(tracer_provider=self._tracer_provider)
             LangChainInstrumentor().instrument(tracer_provider=self._tracer_provider)
 
     
@@ -99,12 +102,20 @@ class EditorAssignmentWorkflow:
             yield span
     
 
+
+
     def _setup_bedrock_client(self):
-        self.logger.info("Setting up Bedrock client with region: %s", self._region_name)
+        self.logger.info("Setting up Anthropic Bedrock client with region: %s", self._region_name)
         
+
+        client = AsyncAnthropicBedrock(
+            # aws_region=self._region_name,
+
+            # aws_session_token=bearer_token
+        )
         # Create session with more debugging
         # session = boto3.session.Session()
-        session = aioboto3.Session()
+        # session = aioboto3.Session()
         # credentials = session.get_credentials()
         
         # # Log credential information for debugging
@@ -115,18 +126,23 @@ class EditorAssignmentWorkflow:
         #     self.logger.warning("No AWS credentials detected!")
         
         # Create the client with the region
-        client = session.client('bedrock-runtime', region_name=self._region_name)
+        # client = session.client('bedrock-runtime', region_name=self._region_name)
         return client
 
     async def _traced_llm_call(self, text: str):
         span = get_current_span()
         token = attach(set_span_in_context(span))
         try:
-            return await async_llm_call(
-                text,
-                modelId=self._model_id,
-                session=self._session,             # reuse session
-                region_name=self._region_name,
+            # return await async_llm_call(
+            #     text,
+            #     modelId=self._model_id,
+            #     session=self._session,             # reuse session
+            #     region_name=self._region_name,
+            # )
+            return await anthropic_llm_call(
+                client=self._client,
+                text=text,
+                modelId=self._model_id
             )
         finally:
             detach(token)

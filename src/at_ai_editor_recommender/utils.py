@@ -47,6 +47,32 @@ def llm_call(client, text:str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
 #     return await asyncio.to_thread(llm_call, *args, **kwargs)
 
 
+async def anthropic_llm_call(client, text:str, modelId: str = DEFAULT_MODEL_ID):
+    print("starting anthropic_llm_call")
+    print(modelId)
+    message = await client.messages.create(
+        model=modelId,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": text
+                    }
+                ]
+            }
+        ],
+        max_tokens=4096,
+        top_p=0.1,
+        temperature=0.0
+    )
+    print(message)
+    print("finished anthropic_llm_call")
+    return message.content[0].text
+
+    
+
 async def async_llm_call(
     text: str,
     *,

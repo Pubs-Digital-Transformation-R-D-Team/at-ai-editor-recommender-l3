@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
-from at_ai_editor_recommender.ee_graph import EditorAssignmentWorkflow, ManuscriptSubmission
+from at_ai_editor_recommender.ee_graph_claude import EditorAssignmentWorkflow, ManuscriptSubmission
 import uvicorn
 import logging
 from contextlib import asynccontextmanager
