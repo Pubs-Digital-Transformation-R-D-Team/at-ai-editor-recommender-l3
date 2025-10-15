@@ -1,5 +1,11 @@
 # at-ai-editor-recommender
 
+Setup python environment with uv
+
+~~~bash
+uv sync
+~~~
+
 To run manually, set profile for AWS credentials to connect to Bedrock. This profile is the aws sso login for the AWS AI account, in this case sandbox
 
 ~~~bash
