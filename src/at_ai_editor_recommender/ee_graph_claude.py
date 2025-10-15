@@ -21,7 +21,7 @@ import logging
 import aiohttp
 from dotenv import load_dotenv
 from contextlib import contextmanager
-from at_ai_editor_recommender.utils import async_llm_call, load_file, anthropic_llm_call
+from at_ai_editor_recommender.utils import load_file, anthropic_llm_call
 from at_ai_editor_recommender.prompts import EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3
 from at_ai_editor_recommender.editor_assignment_json_parser import EditorAssignmentJsonParser
 from at_ai_editor_recommender.ee_api_adapter import get_adapter_for_url
@@ -66,6 +66,7 @@ class EditorAssignmentWorkflow:
         self.logger.info("Initializing EditorAssignmentWorkflow")
         self.logger.info("Using model_id: %s", model_id)
         self._ee_url = os.getenv("EE_URL")
+        self.logger.info("Using EE API: %s", self._ee_url)
         self._ee_base_url = os.getenv("EE_BASE_URL")
         self._tracer = None
         self._tracer_provider = None
@@ -82,14 +83,14 @@ class EditorAssignmentWorkflow:
     def _initialize_tracing(self):
         if self._tracer is None:
             endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+            self.logger.info("Setting up OpenTelemetry tracing with OTLP endpoint: %s", endpoint)
             resource = Resource.create({"service.name": "ee-workflow-langgraph"})
             self._tracer_provider = trace_sdk.TracerProvider(resource=resource)
             trace_api.set_tracer_provider(self._tracer_provider)
             self._tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint)))
             self._tracer = trace_api.get_tracer("ee-workflow-langgraph")
             
-            # Instrument both Bedrock and Langchain
-            # BedrockInstrumentor().instrument(tracer_provider=self._tracer_provider)
+            # Instrument both Bedrock and LangGraph
             AnthropicInstrumentor().instrument(tracer_provider=self._tracer_provider)
             LangChainInstrumentor().instrument(tracer_provider=self._tracer_provider)
 
@@ -109,36 +110,19 @@ class EditorAssignmentWorkflow:
         
 
         client = AsyncAnthropicBedrock(
+            # default_headers={
+            #     "Proxy-Authorization": f"Bearer {os.getenv('AWS_BEARER_TOKEN_BEDROCK')}"
+            # },
             # aws_region=self._region_name,
 
             # aws_session_token=bearer_token
         )
-        # Create session with more debugging
-        # session = boto3.session.Session()
-        # session = aioboto3.Session()
-        # credentials = session.get_credentials()
-        
-        # # Log credential information for debugging
-        # if credentials:
-        #     self.logger.info(f"Found AWS credentials with access key ID: {credentials.access_key[:5]}...")
-        #     self.logger.info(f"Token available: {credentials.token is not None}")
-        # else:
-        #     self.logger.warning("No AWS credentials detected!")
-        
-        # Create the client with the region
-        # client = session.client('bedrock-runtime', region_name=self._region_name)
         return client
 
     async def _traced_llm_call(self, text: str):
         span = get_current_span()
         token = attach(set_span_in_context(span))
         try:
-            # return await async_llm_call(
-            #     text,
-            #     modelId=self._model_id,
-            #     session=self._session,             # reuse session
-            #     region_name=self._region_name,
-            # )
             return await anthropic_llm_call(
                 client=self._client,
                 text=text,
