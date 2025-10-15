@@ -31,6 +31,7 @@ Run agent and can override any environment variables from .env if needed
 
 ~~~bash
 EE_URL=http://prod-lnx-3006:8005/v1/processManuscript \
+ASSIGN_URL=http://prod-lnx-3006:8005/v1/assignManuscript \
 PORT=8013 \
 uv run src/at_ai_editor_recommender/app.py
 ~~~
