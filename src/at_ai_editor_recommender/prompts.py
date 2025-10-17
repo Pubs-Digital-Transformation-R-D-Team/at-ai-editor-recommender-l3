@@ -102,11 +102,10 @@ EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3 = """
 {journal_specific_rules}
 
 ## PATH B: Global Rules for Non-Peer-Reviewed Administrative Manuscripts
-
 **Use PATH B ONLY if BOTH of these are true:**
 - Is Manuscript Peer-Reviewed = "No"
 - Manuscript Type is EXACTLY one of:
-  - Additions and Corrections, Announcement, Correspondence/Rebuttal, Center Stage, Editorial, Expression of Concern, First Reactions, The Hub, Retraction, or Viewpoint
+  - Additions and Corrections, Announcement, Correspondence/Rebuttal, Center Stage, Editorial, Expression of Concern, First Reactions, The Hub, Retraction, Viewpoint
 
 **If both apply, assign as follows:**
 
@@ -118,9 +117,11 @@ EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3 = """
 **Notes:**
 - Only apply PATH B to the manuscript types listed above AND when Peer-Reviewed = "No".
 - When multiple editors for a role, always pick the one with the lowest rank(1 beats 2, 2 beats 3, etc.).
+- In path B assignment can only be to Deputy Editor or Editor-in-Chief.
 - STOP once assignment is made—do not check any further paths or rules.
+**If PATH B does NOT apply, you MUST use PATH C. Do not skip assignment.**
 
-## PATH C: Standard Assignment (DEFAULT FOR ALL OTHER CASES)
+## PATH C: Standard Assignment (**MANDATORY IF A AND B DO NOT APPLY**)
 **PATH C AUTOMATICALLY APPLIES TO EVERYTHING NOT HANDLED BY A OR B**
 
 ** PATH C RULE: MUST SELECT EDITOR WITH LOWEST RANK NUMBER **
@@ -144,6 +145,11 @@ EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3 = """
 
 ** MANDATORY: If PATH C applies and editors exist, MUST assign to lowest rank **
 
+
+Before returning your JSON:
+- The selectedEditorOrcId and selectedEditorPersonId MUST match the actual editor you chose in your reasoning (role and rank).
+- Do NOT use the ID of a different editor.
+- Double-check for consistency before output.
 
 ## Output Format
 Return only a JSON object with the following fields and no other text or explanations:
