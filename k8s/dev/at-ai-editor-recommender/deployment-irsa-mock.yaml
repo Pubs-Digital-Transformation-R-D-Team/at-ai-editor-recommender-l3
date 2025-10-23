@@ -32,8 +32,8 @@ spec:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: http://phoenix-svc.phoenix.svc.cluster.local:6006/v1/traces
         - name: EE_URL
-          value: http://ee-api-svc.er.svc.cluster.local:8003/v1/processManuscript
+          value: http://ee-api-poc-svc.er.svc.cluster.local:8010/editor_assignment_protocol/manuscript
         - name: ASSIGN_URL
-          value: http://ee-api-svc.er.svc.cluster.local:8003/v1/assignManuscript
+          value: http://ee-api-poc-svc.er.svc.cluster.local:8010/mock/assignManuscript
       imagePullSecrets:
       - name: er-ghcr-secret
