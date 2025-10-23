@@ -117,7 +117,7 @@ class EditorAssignmentWorkflow:
             #     "Proxy-Authorization": f"Bearer {os.getenv('AWS_BEARER_TOKEN_BEDROCK')}"
             # },
             # aws_region=self._region_name,
-
+            aws_region="us-east-1"
             # aws_session_token=bearer_token
         )
         return client

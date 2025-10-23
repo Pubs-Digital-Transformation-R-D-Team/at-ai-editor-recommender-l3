@@ -1,1 +1,0 @@
-- No journal-specific rules apply
