@@ -1,11 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Any, Optional, Union
 from at_ai_editor_recommender.ee_graph_anthropic import EditorAssignmentWorkflow, ManuscriptSubmission
 import uvicorn
 import logging
 from contextlib import asynccontextmanager
 import os
+import aiohttp
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,8 +42,19 @@ class AssignEditorResult(BaseModel):
         exclude_none = True
 
 
+class SuccessResponse(BaseModel):
+    data: AssignEditorResult
+
+class ErrorResponse(BaseModel):
+    data: Optional[Any] = None
+    errorCode: str
+    errorMessage: str
+
 class WorkflowResponse(BaseModel):
     assign_editor: AssignEditorResult
+
+# Union response type for the API
+ApiResponse = Union[SuccessResponse, ErrorResponse]
 
 workflow = {}
 
@@ -56,7 +69,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Editor Assignment API", lifespan=lifespan)
 
 
-@app.post("/execute_workflow", response_model=WorkflowResponse, response_model_exclude_none=True)
+@app.post("/execute_workflow", response_model=ApiResponse, response_model_exclude_none=True)
 async def execute_workflow(submission: ManuscriptSubmissionRequest):
     try:
         manuscript_submission = ManuscriptSubmission(
@@ -68,11 +81,34 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
         )
             
         result = await workflow["ee"].async_execute_workflow(manuscript_submission)
-            
-        return result
+
+        return SuccessResponse(data=result.assign_editor)
+
+    except aiohttp.ClientResponseError as e:
+        # Handle HTTP errors from EE API and forward the status code
+        logger.error(f"Downstream API error: Status {e.status}, Message: {e.message}")
+        error_response = ErrorResponse(
+            errorCode=f"DOWNSTREAM_API_ERROR",
+            errorMessage=f"Downstream API request failed: {e.message}"
+        )
+        return JSONResponse(status_code=e.status, content=error_response.model_dump())
+
+    except aiohttp.ClientError as e:
+        # Handle other aiohttp errors (connection errors, etc.)
+        logger.error(f"Downstream API connection error: {str(e)}")
+        error_response = ErrorResponse(
+            errorCode="DOWNSTREAM_API_CONNECTION_ERROR",
+            errorMessage=f"Failed to connect to Downstream API: {str(e)}"
+        )
+        return JSONResponse(status_code=502, content=error_response.model_dump())
+
     except Exception as e:
         logger.error(f"Error executing workflow: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
+        error_response = ErrorResponse(
+            errorCode="WORKFLOW_EXECUTION_ERROR",
+            errorMessage=f"Workflow execution failed: {str(e)}"
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
 
 if __name__ == "__main__":
     host = os.environ.get("HOST", DEFAULT_HOST)
