@@ -22,4 +22,7 @@ EXPOSE 8012
 ENV HOST="0.0.0.0"
 ENV PORT=8012
 
-CMD uvicorn at_ai_editor_recommender.app:app --host $HOST --port $PORT
+# Use ddtrace-run for automatic instrumentation
+ENTRYPOINT ["ddtrace-run"]
+CMD ["uvicorn", "at_ai_editor_recommender.app:app", "--host", "0.0.0.0", "--port", "8012"]
+#CMD uvicorn at_ai_editor_recommender.app:app --host $HOST --port $PORT

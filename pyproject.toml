@@ -1,6 +1,6 @@
 [project]
 name = "at-ai-editor-recommender"
-version = "0.3.5"
+version = "0.3.6"
 description = "AI editor recommender"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -21,6 +21,7 @@ dependencies = [
     "anthropic",
     "openinference-instrumentation-anthropic",
     "jinja2>=3.1.6",
+    "ddtrace>=2.16.0",  # Datadog tracing
 ]
 
 [project.scripts]
