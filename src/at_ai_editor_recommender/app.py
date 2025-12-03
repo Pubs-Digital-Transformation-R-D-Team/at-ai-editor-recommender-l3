@@ -22,6 +22,9 @@ ERROR_CODE_DOWNSTREAM_API = "DOWNSTREAM_API_ERROR"
 ERROR_CODE_CONNECTION = "DOWNSTREAM_API_CONNECTION_ERROR"
 ERROR_CODE_WORKFLOW = "WORKFLOW_EXECUTION_ERROR"
 
+ERROR_MSG_CONNECTION = "Failed to connect to Downstream API"
+ERROR_MSG_WORKFLOW = "Workflow execution failed"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
@@ -75,26 +78,6 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Editor Assignment API", lifespan=lifespan)
 
 
-def _extract_error_details(exception: aiohttp.ClientResponseError) -> tuple[str, str]:
-    """Extract error code and message from ClientResponseError JSON response.
-
-    Returns:
-        tuple[str, str]: (error_code, error_message)
-    """
-    error_message = exception.message
-    error_code = ERROR_CODE_DOWNSTREAM_API
-
-    try:
-        if hasattr(exception, 'text') and exception.text:
-            response_data = json.loads(exception.text)
-            error_message = response_data['data']['errorDetails']
-            error_code = response_data['data']['errorCode']
-    except (json.JSONDecodeError, KeyError, AttributeError, TypeError) as parse_error:
-        logger.warning(f"Could not parse error response JSON: {parse_error}")
-        # Keep the original error message if JSON parsing fails
-
-    logger.error(f"Downstream API error: Code {error_code}, Message: {error_message}")
-    return error_code, error_message
 
 
 @app.post("/execute_workflow", response_model=ApiResponse, response_model_exclude_none=True)
@@ -114,10 +97,10 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
 
     except aiohttp.ClientResponseError as e:
         # Handle HTTP errors from EE API and forward the status code
-        error_code, error_message = _extract_error_details(e)
+        logger.error(f"Downstream API error: Status {e.status}, Message: {e.message}")
         error_response = ErrorResponse(
-            errorCode=error_code,
-            errorMessage=error_message
+            errorCode=ERROR_CODE_DOWNSTREAM_API,
+            errorMessage=e.message or str(e)
         )
         return JSONResponse(status_code=e.status, content=error_response.model_dump())
 
@@ -126,7 +109,7 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
         logger.error(f"Downstream API connection error: {str(e)}")
         error_response = ErrorResponse(
             errorCode=ERROR_CODE_CONNECTION,
-            errorMessage=f"Failed to connect to Downstream API: {str(e)}"
+            errorMessage=f"{ERROR_MSG_CONNECTION}: {str(e)}"
         )
         return JSONResponse(status_code=502, content=error_response.model_dump())
 
@@ -134,7 +117,7 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
         logger.error(f"Error executing workflow: {str(e)}")
         error_response = ErrorResponse(
             errorCode=ERROR_CODE_WORKFLOW,
-            errorMessage=f"Workflow execution failed: {str(e)}"
+            errorMessage=f"{ERROR_MSG_WORKFLOW}: {str(e)}"
         )
         return JSONResponse(status_code=500, content=error_response.model_dump())
 
