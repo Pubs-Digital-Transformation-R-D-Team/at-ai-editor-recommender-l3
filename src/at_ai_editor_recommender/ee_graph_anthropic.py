@@ -296,15 +296,20 @@ class EditorAssignmentWorkflow:
                     
             result = f"Editor with ID {id_to_use} assigned to manuscript {manuscript_number}"
             self.logger.info(f"Successfully assigned editor: {result}")
-            
+
+        except aiohttp.ClientError as e:
+            # Re-raise HTTP errors to be handled by the calling method
+            self.logger.error(f"HTTP error in editor assignment: {str(e)}")
+            raise
         except Exception as e:
+            # Handle other non-HTTP errors locally
             error_msg = f"Failed to assign editor: {str(e)}"
             self.logger.error(error_msg)
             # Still return a valid result for the API, but include error
             result = f"Error: {error_msg}"
 
         result = f"Editor with editor_id of {editor_id} assigned to manuscript_number: {manuscript_submission.manuscript_number}"
-        return {"editor_id": editor_id, 
+        return {"editor_id": editor_id,
                 "editor_person_id": editor_person_id,
                 "assignment_result": result, 
                 "reasoning": reasoning,
