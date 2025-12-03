@@ -8,6 +8,7 @@ import logging
 from contextlib import asynccontextmanager
 import os
 import aiohttp
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,6 +16,11 @@ load_dotenv()
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8012
 MODEL_ID = os.getenv("MODEL_ID", "us.amazon.nova-premier-v1:0")
+
+# Error constants
+ERROR_CODE_DOWNSTREAM_API = "DOWNSTREAM_API_ERROR"
+ERROR_CODE_CONNECTION = "DOWNSTREAM_API_CONNECTION_ERROR"
+ERROR_CODE_WORKFLOW = "WORKFLOW_EXECUTION_ERROR"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,6 +75,28 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Editor Assignment API", lifespan=lifespan)
 
 
+def _extract_error_details(exception: aiohttp.ClientResponseError) -> tuple[str, str]:
+    """Extract error code and message from ClientResponseError JSON response.
+
+    Returns:
+        tuple[str, str]: (error_code, error_message)
+    """
+    error_message = exception.message
+    error_code = ERROR_CODE_DOWNSTREAM_API
+
+    try:
+        if hasattr(exception, 'text') and exception.text:
+            response_data = json.loads(exception.text)
+            error_message = response_data['data']['errorDetails']
+            error_code = response_data['data']['errorCode']
+    except (json.JSONDecodeError, KeyError, AttributeError, TypeError) as parse_error:
+        logger.warning(f"Could not parse error response JSON: {parse_error}")
+        # Keep the original error message if JSON parsing fails
+
+    logger.error(f"Downstream API error: Code {error_code}, Message: {error_message}")
+    return error_code, error_message
+
+
 @app.post("/execute_workflow", response_model=ApiResponse, response_model_exclude_none=True)
 async def execute_workflow(submission: ManuscriptSubmissionRequest):
     try:
@@ -86,10 +114,10 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
 
     except aiohttp.ClientResponseError as e:
         # Handle HTTP errors from EE API and forward the status code
-        logger.error(f"Downstream API error: Status {e.status}, Message: {e.message}")
+        error_code, error_message = _extract_error_details(e)
         error_response = ErrorResponse(
-            errorCode=f"DOWNSTREAM_API_ERROR",
-            errorMessage=f"Downstream API request failed: {e.message}"
+            errorCode=error_code,
+            errorMessage=error_message
         )
         return JSONResponse(status_code=e.status, content=error_response.model_dump())
 
@@ -97,7 +125,7 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
         # Handle other aiohttp errors (connection errors, etc.)
         logger.error(f"Downstream API connection error: {str(e)}")
         error_response = ErrorResponse(
-            errorCode="DOWNSTREAM_API_CONNECTION_ERROR",
+            errorCode=ERROR_CODE_CONNECTION,
             errorMessage=f"Failed to connect to Downstream API: {str(e)}"
         )
         return JSONResponse(status_code=502, content=error_response.model_dump())
@@ -105,7 +133,7 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
     except Exception as e:
         logger.error(f"Error executing workflow: {str(e)}")
         error_response = ErrorResponse(
-            errorCode="WORKFLOW_EXECUTION_ERROR",
+            errorCode=ERROR_CODE_WORKFLOW,
             errorMessage=f"Workflow execution failed: {str(e)}"
         )
         return JSONResponse(status_code=500, content=error_response.model_dump())
