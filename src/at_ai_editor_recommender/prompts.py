@@ -109,8 +109,8 @@ EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3 = """
 
 **If both apply, assign as follows:**
 
-1. Assign to the Deputy Editor with the lowest rank, if any Deputy Editor exists.
-2. If no Deputy Editor, assign to the Editor-in-Chief with the lowest rank, if any Editor-in-Chief exists.
+1. Assign to the Deputy Editor, if any Deputy Editor exists.
+2. If no Deputy Editor, assign to the Editor-in-Chief, if any Editor-in-Chief exists.
 3. If neither exists, leave selectedEditor empty.
 4. Do not assign to an Editor-in-Chief if any Deputy Editors exists.
 
@@ -119,12 +119,14 @@ EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3 = """
 - When multiple editors for a role, always pick the one with the lowest rank(1 beats 2, 2 beats 3, etc.).
 - In path B assignment can only be to Deputy Editor or Editor-in-Chief.
 - STOP once assignment is made—do not check any further paths or rules.
+**If PATH B applies, but no eligible editor is available, do not make an assignment**
 **If PATH B does NOT apply, you MUST use PATH C. Do not skip assignment.**
 
 ## PATH C: Standard Assignment (**MANDATORY IF A AND B DO NOT APPLY**)
 **PATH C AUTOMATICALLY APPLIES TO EVERYTHING NOT HANDLED BY A OR B**
 
 ** PATH C RULE: MUST SELECT EDITOR WITH LOWEST RANK NUMBER **
+** EDITORS WITH RANK NA ARE NOT ELIGIBLE FOR PATH C**
 
 **ALGORITHM:**
 **PATH C IGNORES EVERYTHING EXCEPT RANK:**
@@ -142,6 +144,7 @@ EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3 = """
 1. Not selecting an editor when editors exist
 2. Selecting higher rank when lower exists
 3. Considering anything besides rank
+4. Considering editors with rank NA
 
 ** MANDATORY: If PATH C applies and editors exist, MUST assign to lowest rank **
 

@@ -1,1 +1,1 @@
-- No journal-specific rules apply
+SKIP TO PATH B - No journal-specific rules
