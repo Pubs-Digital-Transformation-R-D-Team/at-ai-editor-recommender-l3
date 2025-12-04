@@ -78,6 +78,33 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Editor Assignment API", lifespan=lifespan)
 
 
+def _extract_error_from_response_body(exception: aiohttp.ClientResponseError) -> tuple[str, str]:
+    """Extract error code and message from ClientResponseError JSON response body.
+
+    Returns:
+        tuple[str, str]: (error_code, error_message)
+    """
+    error_message = exception.message or str(exception)
+    error_code = ERROR_CODE_DOWNSTREAM_API
+
+    try:
+        # Check if we have the response body attached as custom attribute
+        if hasattr(exception, 'response_text') and exception.response_text:
+            response_data = json.loads(exception.response_text)
+
+            # Extract errorDetails from the nested structure
+            if 'data' in response_data and isinstance(response_data['data'], dict):
+                data_section = response_data['data']
+                if 'errorDetails' in data_section:
+                    error_message = data_section['errorDetails']
+                if 'errorCode' in data_section:
+                    error_code = data_section['errorCode']
+
+    except (json.JSONDecodeError, KeyError, AttributeError, TypeError) as parse_error:
+        logger.warning(f"Could not parse error response JSON: {parse_error}")
+        # Keep the original error message if JSON parsing fails
+
+    return error_code, error_message
 
 
 @app.post("/execute_workflow", response_model=ApiResponse, response_model_exclude_none=True)
@@ -98,9 +125,13 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
     except aiohttp.ClientResponseError as e:
         # Handle HTTP errors from EE API and forward the status code
         logger.error(f"Downstream API error: Status {e.status}, Message: {e.message}")
+
+        # Extract detailed error information from response body
+        error_code, error_message = _extract_error_from_response_body(e)
+
         error_response = ErrorResponse(
-            errorCode=ERROR_CODE_DOWNSTREAM_API,
-            errorMessage=e.message or str(e)
+            errorCode=error_code,
+            errorMessage=error_message
         )
         return JSONResponse(status_code=e.status, content=error_response.model_dump())
 

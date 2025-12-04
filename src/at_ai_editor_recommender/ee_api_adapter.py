@@ -51,8 +51,14 @@ class EeJsonApiAdapter(EeApiAdapter):
         self.logger.info(f"Fetching EE data from URL: {url} with data: {data}")
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data) as resp:
-                resp.raise_for_status()
-                return await resp.text()
+                try:
+                    resp.raise_for_status()
+                    return await resp.text()
+                except aiohttp.ClientResponseError as e:
+                    # Read response body and attach it to the exception
+                    response_body = await resp.text()
+                    e.response_text = response_body
+                    raise
 
     async def render_manuscript_information(self, manuscript_info):
         return self.manuscript_info_template.render(**manuscript_info)
@@ -88,10 +94,14 @@ class EeMarkdownApiAdapter(EeApiAdapter):
         self.logger.info(f"Fetching EE data from URL: {url}")
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
-                resp.raise_for_status()
-                # return await resp.text()  # Let subclass decide how to parse
-                data = await resp.json()
-                return data  # { "manuscript_information": ..., "available_editors": ... }
+                try:
+                    resp.raise_for_status()
+                    return await resp.json()
+                except aiohttp.ClientResponseError as e:
+                    # Read response body and attach it to the exception
+                    response_body = await resp.text()
+                    e.response_text = response_body
+                    raise
 
     async def get_manuscript_with_editors(self, manuscript_number: str, journal_id: str = None):
         raw = await self.fetch_raw_data(manuscript_number)

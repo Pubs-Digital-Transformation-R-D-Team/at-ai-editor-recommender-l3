@@ -290,10 +290,16 @@ class EditorAssignmentWorkflow:
                 form_data.add_field('editor_id', id_to_use)
                 
                 async with session.post(assign_url, data=form_data) as resp:
-                    resp.raise_for_status()
-                    api_response = await resp.text()
-                    self.logger.info(f"Assign API response: {api_response}")
-                    
+                    try:
+                        resp.raise_for_status()
+                        api_response = await resp.text()
+                        self.logger.info(f"Assign API response: {api_response}")
+                    except aiohttp.ClientResponseError as e:
+                        # Read response body and attach it to the exception
+                        response_body = await resp.text()
+                        e.response_text = response_body
+                        raise
+
             result = f"Editor with ID {id_to_use} assigned to manuscript {manuscript_number}"
             self.logger.info(f"Successfully assigned editor: {result}")
 
