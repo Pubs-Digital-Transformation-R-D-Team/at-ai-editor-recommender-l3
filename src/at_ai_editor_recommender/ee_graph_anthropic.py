@@ -229,95 +229,66 @@ class EditorAssignmentWorkflow:
         if has_editor:
             return {"verification_result": "Verification passed"}
         else:
-            return {"verification_result": "Verification failed: No valid editor assigned."}
+            raise ValueError("Verification failed: No valid editor assigned by the AI model")
+
 
 
 
     def extract_editor_assignment_output(self, llm_output:str):
-        result = EditorAssignmentJsonParser.parse(llm_output)
-        return result
+        parsed_result = EditorAssignmentJsonParser.parse(llm_output)
+        return parsed_result
 
     async def _assign_editor(self, state):
         manuscript_submission = state["manuscript_submission"]
-        verification_result = state.get("verification_result", "")
 
         output = self.extract_editor_assignment_output(state["editor_assignment_result"])
         self.logger.info("Editor assignment result: %s", output)
+
         editor_id = output.get("selectedEditorOrcId", "")
         editor_person_id = output.get("selectedEditorPersonId", "")
         reasoning = output.get("reasoning", "")
         filtered_out_editors = output.get("filteredOutEditors", [])
         runner_up = output.get("runnerUp", "")
 
+        # Determine the correct ID to use (prefer ORCID if available)
+        id_to_use = editor_person_id if editor_person_id else editor_id
 
-        if not verification_result.startswith("Verification passed"):
-            # If verification failed, do not proceed with assignment
-            result = f"Cannot assign editor: {verification_result}"
-            self.logger.error(result)
-            # return {"editor_id": editor_id,
-            #         "editor_person_id": editor_person_id,
-            #         "assignment_result": result,
-            #         "reasoning": reasoning,
-            #         "filtered_out_editors": filtered_out_editors,
-            #         "runner_up": runner_up}
-            return {"editor_id": "",
-                    "editor_person_id": "",
-                    "assignment_result": result,
-                    "reasoning": "verification failed",
-                    "filtered_out_editors": "",
-                    "runner_up": ""}
-        # Make the actual API call to assign the editor
-        try:
-            # Determine the correct ID to use (prefer ORCID if available)
-            id_to_use = editor_person_id if editor_person_id else editor_id
-            
-            if not id_to_use:
-                raise ValueError("No valid editor ID available for assignment")
+        if not id_to_use:
+            raise ValueError("No valid editor ID available for assignment")
 
-            if not self._assign_url:
-                raise RuntimeError("Please provide ASSIGN_URL environment variable")
+        if not self._assign_url:
+            raise RuntimeError("Please provide ASSIGN_URL environment variable")
 
-            assign_url = f"{self._assign_url}"
-            self.logger.info(f"Assigning editor with API call to {assign_url}")
-            
-            manuscript_number = manuscript_submission.manuscript_number
-            journal_id = manuscript_submission.coden
-            # Using aiohttp to make the POST request with multipart/form-data
-            async with aiohttp.ClientSession() as session:
-                form_data = aiohttp.FormData()
-                form_data.add_field('manuscript_id', manuscript_number)
-                form_data.add_field('journal_id', journal_id)
-                form_data.add_field('editor_id', id_to_use)
-                
-                async with session.post(assign_url, data=form_data) as resp:
-                    try:
-                        resp.raise_for_status()
-                        api_response = await resp.text()
-                        self.logger.info(f"Assign API response: {api_response}")
-                    except aiohttp.ClientResponseError as e:
-                        # Read response body and attach it to the exception
-                        response_body = await resp.text()
-                        e.response_text = response_body
-                        raise
+        assign_url = f"{self._assign_url}"
+        self.logger.info(f"Assigning editor with API call to {assign_url}")
 
-            result = f"Editor with ID {id_to_use} assigned to manuscript {manuscript_number}"
-            self.logger.info(f"Successfully assigned editor: {result}")
+        manuscript_number = manuscript_submission.manuscript_number
+        journal_id = manuscript_submission.coden
+        # Using aiohttp to make the POST request with multipart/form-data
+        async with aiohttp.ClientSession() as session:
+            form_data = aiohttp.FormData()
+            form_data.add_field('manuscript_id', manuscript_number)
+            form_data.add_field('journal_id', journal_id)
+            form_data.add_field('editor_id', id_to_use)
 
-        except aiohttp.ClientError as e:
-            # Re-raise HTTP errors to be handled by the calling method
-            self.logger.error(f"HTTP error in editor assignment: {str(e)}")
-            raise
-        except Exception as e:
-            # Handle other non-HTTP errors locally
-            error_msg = f"Failed to assign editor: {str(e)}"
-            self.logger.error(error_msg)
-            # Still return a valid result for the API, but include error
-            result = f"Error: {error_msg}"
+            async with session.post(assign_url, data=form_data) as resp:
+                try:
+                    resp.raise_for_status()
+                    api_response = await resp.text()
+                    self.logger.info(f"Assign API response: {api_response}")
+                except aiohttp.ClientResponseError as e:
+                    # Read response body and attach it to the exception
+                    response_body = await resp.text()
+                    e.response_text = response_body
+                    raise
 
-        result = f"Editor with editor_id of {editor_id} assigned to manuscript_number: {manuscript_submission.manuscript_number}"
+
+        self.logger.info(f"Successfully assigned editor: Editor with ID {id_to_use} assigned to manuscript {manuscript_number}")
+
+        assignment_result = f"Editor with editor_id of {id_to_use} assigned to manuscript_number: {manuscript_submission.manuscript_number}"
         return {"editor_id": editor_id,
                 "editor_person_id": editor_person_id,
-                "assignment_result": result, 
+                "assignment_result": assignment_result,
                 "reasoning": reasoning,
                 "filtered_out_editors": filtered_out_editors,
                 "runner_up": runner_up}

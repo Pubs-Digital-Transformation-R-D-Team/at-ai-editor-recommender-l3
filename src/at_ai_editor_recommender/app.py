@@ -120,7 +120,7 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
             
         result = await workflow["ee"].async_execute_workflow(manuscript_submission)
 
-        return SuccessResponse(data=result)
+        return SuccessResponse(data=result.get('assign_editor'))
 
     except aiohttp.ClientResponseError as e:
         # Handle HTTP errors from EE API and forward the status code
