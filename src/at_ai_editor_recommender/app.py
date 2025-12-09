@@ -40,11 +40,13 @@ class ManuscriptSubmissionRequest(BaseModel):
 
 class AssignEditorResult(BaseModel):
     editor_id: str
+    editor_person_id: str
     assignment_result: str
     reasoning: Optional[str] = None
     expertise_factor: Optional[str] = None
     workload_factor: Optional[str] = None
     runner_up: Optional[str] = None
+    filtered_out_editors: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -117,7 +119,7 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
             # manuscript_title=submission.manuscript_title,
             # manuscript_abstract=submission.manuscript_abstract
         )
-            
+
         result = await workflow["ee"].async_execute_workflow(manuscript_submission)
 
         return SuccessResponse(data=result.get('assign_editor'))

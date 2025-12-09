@@ -48,11 +48,13 @@ class State(TypedDict):
     editor_assignment_result: str | None
     verification_result: str | None
     editor_id: str | None
+    editor_person_id: str | None
     assignment_result: str | None
     reasoning: str | None
     expertise_factor: str | None
     workload_factor:str | None
     runner_up: str | None
+    filtered_out_editors: str | None
 
 class EditorAssignmentWorkflow:
 
@@ -61,7 +63,10 @@ class EditorAssignmentWorkflow:
     SYSTEM = [{ "text": "You are a helpful assistant" }]
     REGION_NAME = 'us-east-1'
   
-    
+    # Verification status constants
+    VERIFICATION_PASSED = "Verification passed"
+    VERIFICATION_FAILED = "Verification failed"
+
     def __init__(self, client=None, model_id=DEFAULT_MODEL_ID, region_name=REGION_NAME):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initializing EditorAssignmentWorkflow")
@@ -219,80 +224,76 @@ class EditorAssignmentWorkflow:
 
     async def _verification(self, state):
         editor_assignment_result = state["editor_assignment_result"]
-        output = self.extract_editor_assignment_output(editor_assignment_result)
-        editor_id = output.get("selectedEditorOrcId", "")
-        editor_person_id = output.get("selectedEditorPersonId", "")
-        
-        has_editor = bool(editor_id or editor_person_id)
+        output = EditorAssignmentWorkflow._extract_editor_assignment_output(editor_assignment_result)
+
+        has_editor = bool(output.get("selectedEditorPersonId", ""))
         
         # Just add a verification flag to state rather than changing the flow
         if has_editor:
-            return {"verification_result": "Verification passed"}
+            return {"verification_result": self.VERIFICATION_PASSED}
         else:
-            raise ValueError("Verification failed: No valid editor assigned by the AI model")
+            return {"verification_result": self.VERIFICATION_FAILED}
 
 
-
-
-    def extract_editor_assignment_output(self, llm_output:str):
+    @staticmethod
+    def _extract_editor_assignment_output(llm_output:str):
         parsed_result = EditorAssignmentJsonParser.parse(llm_output)
         return parsed_result
 
     async def _assign_editor(self, state):
         manuscript_submission = state["manuscript_submission"]
+        verification_result = state.get("verification_result", "")
 
-        output = self.extract_editor_assignment_output(state["editor_assignment_result"])
-        self.logger.info("Editor assignment result: %s", output)
+        llm_response = EditorAssignmentWorkflow._extract_editor_assignment_output(state["editor_assignment_result"])
+        self.logger.info("Editor assignment result: %s", llm_response)
 
-        editor_id = output.get("selectedEditorOrcId", "")
-        editor_person_id = output.get("selectedEditorPersonId", "")
-        reasoning = output.get("reasoning", "")
-        filtered_out_editors = output.get("filteredOutEditors", [])
-        runner_up = output.get("runnerUp", "")
+        if verification_result == self.VERIFICATION_FAILED:
+            assignment_result = f"No editor assigned to manuscript_number: {manuscript_submission.manuscript_number}"
+            return EditorAssignmentWorkflow._make_assignment_response(llm_response, assignment_result)
 
-        # Determine the correct ID to use (prefer ORCID if available)
-        id_to_use = editor_person_id if editor_person_id else editor_id
 
-        if not id_to_use:
-            raise ValueError("No valid editor ID available for assignment")
+        # Make the actual API call to assign the editor
+        await self._call_assign_api(manuscript_submission, llm_response.get("selectedEditorPersonId", ""))
 
+        assignment_result = f"Editor with editor_id of {llm_response.get("selectedEditorPersonId", "")} assigned to manuscript_number: {manuscript_submission.manuscript_number}"
+        return EditorAssignmentWorkflow._make_assignment_response(llm_response, assignment_result)
+
+    @staticmethod
+    def _make_assignment_response(output, assignment_result):
+        return {
+            "editor_id": output.get("selectedEditorOrcId", ""),
+            "editor_person_id": output.get("selectedEditorPersonId", ""),
+            "assignment_result": assignment_result,
+            "reasoning": output.get("reasoning", ""),
+            "filtered_out_editors": output.get("filteredOutEditors", []),
+            "runner_up": output.get("runnerUp", "")
+        }
+
+    async def _call_assign_api(self, manuscript_submission, editor_id):
+        """Make the API call to assign the editor."""
         if not self._assign_url:
             raise RuntimeError("Please provide ASSIGN_URL environment variable")
 
-        assign_url = f"{self._assign_url}"
-        self.logger.info(f"Assigning editor with API call to {assign_url}")
+        self.logger.info(f"Assigning editor with API call to {self._assign_url}")
 
-        manuscript_number = manuscript_submission.manuscript_number
-        journal_id = manuscript_submission.coden
-        # Using aiohttp to make the POST request with multipart/form-data
         async with aiohttp.ClientSession() as session:
             form_data = aiohttp.FormData()
-            form_data.add_field('manuscript_id', manuscript_number)
-            form_data.add_field('journal_id', journal_id)
-            form_data.add_field('editor_id', id_to_use)
+            form_data.add_field('manuscript_id', manuscript_submission.manuscript_number)
+            form_data.add_field('journal_id', manuscript_submission.coden)
+            form_data.add_field('editor_id', editor_id)
 
-            async with session.post(assign_url, data=form_data) as resp:
+            async with session.post(self._assign_url, data=form_data) as resp:
                 try:
                     resp.raise_for_status()
                     api_response = await resp.text()
                     self.logger.info(f"Assign API response: {api_response}")
                 except aiohttp.ClientResponseError as e:
-                    # Read response body and attach it to the exception
                     response_body = await resp.text()
                     e.response_text = response_body
                     raise
 
-
-        self.logger.info(f"Successfully assigned editor: Editor with ID {id_to_use} assigned to manuscript {manuscript_number}")
-
-        assignment_result = f"Editor with editor_id of {id_to_use} assigned to manuscript_number: {manuscript_submission.manuscript_number}"
-        return {"editor_id": editor_id,
-                "editor_person_id": editor_person_id,
-                "assignment_result": assignment_result,
-                "reasoning": reasoning,
-                "filtered_out_editors": filtered_out_editors,
-                "runner_up": runner_up}
-
+        self.logger.info(
+            f"Successfully assigned editor: Editor with ID {editor_id} assigned to manuscript {manuscript_submission.manuscript_number}")
 
 
     def _build_graph(self):
