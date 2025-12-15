@@ -155,6 +155,7 @@ Before returning your JSON:
 - Double-check for consistency before output.
 
 ## Output Format
+** Important: Only return a valid json without any text or explanations**
 Return only a JSON object with the following fields and no other text or explanations:
 {{
   "selectedEditorOrcId": "editor's ORCID or empty-string",
