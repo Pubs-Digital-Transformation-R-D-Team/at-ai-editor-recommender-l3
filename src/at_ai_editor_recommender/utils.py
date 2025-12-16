@@ -51,6 +51,7 @@ async def anthropic_llm_call(client, text:str, modelId: str = DEFAULT_MODEL_ID):
     print("starting anthropic_llm_call")
     message = await client.messages.create(
         model=modelId,
+        system="You are a JSON-only response system. You must always respond with valid, properly formatted JSON. Never include explanations, comments, or any text outside the JSON structure. Do not use markdown code blocks. Return only the raw JSON object.",
         messages=[
             {
                 "role": "user",
