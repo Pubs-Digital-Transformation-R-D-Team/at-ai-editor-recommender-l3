@@ -9,3 +9,4 @@
 **If using PATH A, follow this strict priority:**
 1. Assign to any available Editor-in-Chief(if available)
 2. If no Editor-in-Chief : Leave selectedEditor empty
+**CRITICAL: If PATH A applies and no Editor-in-Chief is available, DO NOT assign any editor - leave selectedEditor empty**
