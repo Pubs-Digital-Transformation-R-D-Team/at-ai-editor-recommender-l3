@@ -80,6 +80,36 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Editor Assignment API", lifespan=lifespan)
 
 
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint for Kubernetes liveness probe."""
+    return {"status": "healthy", "service": "at-ai-editor-recommender"}
+
+
+@app.get("/ready", tags=["Health"])
+async def readiness_check():
+    """Readiness check endpoint for Kubernetes readiness probe."""
+    try:
+        # Check if the workflow is properly initialized
+        if "ee" not in workflow or workflow["ee"] is None:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not ready", "reason": "Workflow not initialized"}
+            )
+
+        # Additional checks can be added here (database connections, external services, etc.)
+        return {"status": "ready", "service": "at-ai-editor-recommender"}
+    except Exception as e:
+        logger.error(f"Readiness check failed: %s", e)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not ready",
+                "reason": "Internal error during readiness check"
+            }
+        )
+
+
 def _extract_error_from_response_body(exception: aiohttp.ClientResponseError) -> tuple[str, str]:
     """Extract error code and message from ClientResponseError JSON response body.
 
