@@ -156,7 +156,7 @@ class EditorAssignmentWorkflow:
         """
         manuscript_submission = state["manuscript_submission"]
         manuscript_number = manuscript_submission.manuscript_number
-        journal_id = manuscript_submission.coden
+        journal_id = manuscript_submission.journal_id
         adapter = get_adapter_for_url(self._ee_url)
         self.logger.info(f"Using adapter: {adapter.__class__.__name__} for URL: {self._ee_url}")
         result = await adapter.get_manuscript_with_editors(manuscript_number, journal_id)
@@ -186,7 +186,7 @@ class EditorAssignmentWorkflow:
         manuscript_information = state["manuscript_information"]
         available_editors = state["available_editors"]
 
-        journal_specific_rules = self._journal_specific_rules(manuscript_submission.coden)
+        journal_specific_rules = self._journal_specific_rules(manuscript_submission.journal_id)
         # prompt_template = self._prepare_prompt(manuscript_submission.coden)
 
         text = EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3.format(

@@ -33,13 +33,14 @@ logging.basicConfig(
 
 class ManuscriptSubmissionRequest(BaseModel):
     manuscript_number: str
-    coden: str
+    journal_id: str
+    is_resubmit: bool
     # manuscript_type: str
     # manuscript_title: str
     # manuscript_abstract: str
 
 class AssignEditorResult(BaseModel):
-    editor_id: str
+    editor_id: Optional[str]
     editor_person_id: str
     assignment_result: str
     reasoning: Optional[str] = None
@@ -144,15 +145,20 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
     try:
         manuscript_submission = ManuscriptSubmission(
             manuscript_number=submission.manuscript_number,
-            coden=submission.coden
-            # manuscript_type=submission.manuscript_type,
-            # manuscript_title=submission.manuscript_title,
-            # manuscript_abstract=submission.manuscript_abstract
+            journal_id=submission.journal_id,
+            is_resubmit=submission.is_resubmit
         )
 
         result = await workflow["ee"].async_execute_workflow(manuscript_submission)
+        response = None
+        if 'execute_assignment' in result:
+            response = result.get('execute_assignment')
+        elif 'use_existing_assignment' in result:
+            response = result.get('use_existing_assignment')
+        elif 'skip_assignment' in result:
+            response = result.get('skip_assignment')
 
-        return SuccessResponse(data=result.get('assign_editor'))
+        return SuccessResponse(data=response)
 
     except aiohttp.ClientResponseError as e:
         # Handle HTTP errors from EE API and forward the status code
