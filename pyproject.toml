@@ -1,6 +1,6 @@
 [project]
 name = "at-ai-editor-recommender"
-version = "1.0.0"
+version = "1.1.0"
 description = "AI editor recommender"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -12,14 +12,8 @@ dependencies = [
     "langchain-aws>=0.2.30",
     "langchain-mcp-adapters>=0.1.9",
     "langgraph>=0.6.4",
-    "openinference-instrumentation-bedrock>=0.1.26",
-    "openinference-instrumentation-langchain>=0.1.50",
-    "opentelemetry-exporter-otlp>=1.36.0",
-    "opentelemetry-instrumentation-botocore>=0.57b0",
-    "opentelemetry-sdk>=1.36.0",
     "uvicorn>=0.35.0",
     "anthropic",
-    "openinference-instrumentation-anthropic",
     "jinja2>=3.1.6",
     "ddtrace>=2.16.0",  # Datadog tracing
 ]

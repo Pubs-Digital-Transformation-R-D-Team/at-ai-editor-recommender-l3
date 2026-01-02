@@ -1,16 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict, Annotated, Literal, Optional, ClassVar
-from openinference.instrumentation.langchain import LangChainInstrumentor, get_current_span
-from openinference.instrumentation.anthropic import AnthropicInstrumentor
-from openinference.instrumentation.bedrock import BedrockInstrumentor
-from openinference.instrumentation import using_prompt_template
 from opentelemetry import trace as trace_api
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk import trace as trace_sdk
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.resources import Resource 
-from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
 from opentelemetry.trace import set_span_in_context
 from opentelemetry.context import attach, detach
 from dataclasses import dataclass
@@ -80,30 +71,6 @@ class EditorAssignmentWorkflow:
         self.logger.info("Done initializing EditorAssignmentWorkflow")
 
 
-    def _initialize_tracing(self):
-        if self._tracer is None:
-            endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-            self.logger.info("Setting up OpenTelemetry tracing with OTLP endpoint: %s", endpoint)
-            resource = Resource.create({"service.name": "ee-workflow-langgraph"})
-            self._tracer_provider = trace_sdk.TracerProvider(resource=resource)
-            trace_api.set_tracer_provider(self._tracer_provider)
-            self._tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint)))
-            self._tracer = trace_api.get_tracer("ee-workflow-langgraph")
-            
-            # Instrument both Bedrock and LangGraph
-            AnthropicInstrumentor().instrument(tracer_provider=self._tracer_provider)
-            LangChainInstrumentor().instrument(tracer_provider=self._tracer_provider)
-
-    
-
-    @contextmanager
-    def _start_trace(self, trace_name: str):
-        with self._tracer.start_as_current_span(trace_name) as span:
-            span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, OpenInferenceSpanKindValues.AGENT.value)
-            yield span
-    
-
-
 
     def _setup_bedrock_client(self):
         self.logger.info("Setting up Anthropic Bedrock client with region: %s", self._region_name)
@@ -120,16 +87,11 @@ class EditorAssignmentWorkflow:
         return client
 
     async def _traced_llm_call(self, text: str):
-        span = get_current_span()
-        token = attach(set_span_in_context(span))
-        try:
-            return await anthropic_llm_call(
-                client=self._client,
-                text=text,
-                modelId=self._model_id
-            )
-        finally:
-            detach(token)
+        return await anthropic_llm_call(
+            client=self._client,
+            text=text,
+            modelId=self._model_id
+        )
 
     def _journal_specific_rules(self, coden):
 
@@ -195,16 +157,8 @@ class EditorAssignmentWorkflow:
             available_editors=available_editors
         )
 
-        # for tracing
-        with using_prompt_template(
-            template = EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3,
-            variables = {"journal_specific_rules": journal_specific_rules,
-                         "manuscript_information": manuscript_information, 
-                         "available_editors": available_editors},
-            version = "v1.0"
-        ):
-            msg = await self._traced_llm_call(text)
-            return {"editor_assignment_result": msg}
+        msg = await self._traced_llm_call(text)
+        return {"editor_assignment_result": msg}
 
     async def _verification(self, state):
         editor_assignment_result = state["editor_assignment_result"]

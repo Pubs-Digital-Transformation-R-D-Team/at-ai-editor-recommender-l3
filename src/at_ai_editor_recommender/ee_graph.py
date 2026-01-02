@@ -1,17 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict, Annotated, Literal, Optional, ClassVar
-from openinference.instrumentation.langchain import LangChainInstrumentor, get_current_span
-from openinference.instrumentation.bedrock import BedrockInstrumentor
-from openinference.instrumentation import using_prompt_template
 from opentelemetry import trace as trace_api
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk import trace as trace_sdk
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.resources import Resource 
-from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
-from opentelemetry.trace import set_span_in_context
-from opentelemetry.context import attach, detach
 from dataclasses import dataclass
 import boto3
 import os
@@ -65,39 +55,15 @@ class EditorAssignmentWorkflow:
         self.logger.info("Using model_id: %s", model_id)
         self._ee_url = os.getenv("EE_URL")
         self._ee_base_url = os.getenv("EE_BASE_URL")
-        self._tracer = None
-        self._tracer_provider = None
         self._graph: Optional[CompiledStateGraph] = None
         self._model_id = model_id
         self._region_name = region_name
-        self._initialize_tracing()
         # self._client = client or self._setup_bedrock_client()
         self._session = aioboto3.Session()  
         self._graph = self._build_graph()
         self.logger.info("Done initializing EditorAssignmentWorkflow")
 
 
-    def _initialize_tracing(self):
-        if self._tracer is None:
-            endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-            resource = Resource.create({"service.name": "ee-workflow-langgraph"})
-            self._tracer_provider = trace_sdk.TracerProvider(resource=resource)
-            trace_api.set_tracer_provider(self._tracer_provider)
-            self._tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint)))
-            self._tracer = trace_api.get_tracer("ee-workflow-langgraph")
-            
-            # Instrument both Bedrock and Langchain
-            BedrockInstrumentor().instrument(tracer_provider=self._tracer_provider)
-            LangChainInstrumentor().instrument(tracer_provider=self._tracer_provider)
-
-    
-
-    @contextmanager
-    def _start_trace(self, trace_name: str):
-        with self._tracer.start_as_current_span(trace_name) as span:
-            span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, OpenInferenceSpanKindValues.AGENT.value)
-            yield span
-    
 
     def _setup_bedrock_client(self):
         self.logger.info("Setting up Bedrock client with region: %s", self._region_name)
@@ -119,17 +85,12 @@ class EditorAssignmentWorkflow:
         return client
 
     async def _traced_llm_call(self, text: str):
-        span = get_current_span()
-        token = attach(set_span_in_context(span))
-        try:
-            return await async_llm_call(
-                text,
-                modelId=self._model_id,
-                session=self._session,             # reuse session
-                region_name=self._region_name,
-            )
-        finally:
-            detach(token)
+        return await async_llm_call(
+            text,
+            modelId=self._model_id,
+            session=self._session,             # reuse session
+            region_name=self._region_name,
+        )
 
     def _journal_specific_rules(self, coden):
 
@@ -195,16 +156,8 @@ class EditorAssignmentWorkflow:
             available_editors=available_editors
         )
 
-        # for tracing
-        with using_prompt_template(
-            template = EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3,
-            variables = {"journal_specific_rules": journal_specific_rules,
-                         "manuscript_information": manuscript_information, 
-                         "available_editors": available_editors},
-            version = "v1.0"
-        ):
-            msg = await self._traced_llm_call(text)
-            return {"editor_assignment_result": msg}
+        msg = await self._traced_llm_call(text)
+        return {"editor_assignment_result": msg}
 
     async def _verification(self, state):
         editor_assignment_result = state["editor_assignment_result"]

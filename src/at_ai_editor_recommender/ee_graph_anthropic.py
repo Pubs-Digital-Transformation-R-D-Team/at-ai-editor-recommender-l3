@@ -1,7 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict, Annotated, Literal, Optional, ClassVar
-from openinference.instrumentation import using_prompt_template
 from dataclasses import dataclass
 import os
 import logging
@@ -163,19 +162,12 @@ class EditorAssignmentWorkflow:
             available_editors=available_editors
         )
 
-        with using_prompt_template(
-                template=EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3,
-                variables={"journal_specific_rules": journal_specific_rules,
-                           "manuscript_information": manuscript_information,
-                           "available_editors": available_editors},
-                version="v1.0"
-        ):
-            msg = await anthropic_llm_call(
-                client=self._client,
-                text=text,
-                modelId=self._model_id)
+        msg = await anthropic_llm_call(
+            client=self._client,
+            text=text,
+            modelId=self._model_id)
 
-            return {"editor_assignment_result": msg}
+        return {"editor_assignment_result": msg}
 
 
     async def _verify_recommendation(self, state):
