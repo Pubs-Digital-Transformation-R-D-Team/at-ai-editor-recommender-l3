@@ -1,5 +1,6 @@
 import os
 import aioboto3
+import json
 
 
 DEFAULT_MODEL_ID = 'us.amazon.nova-premier-v1:0'
@@ -43,6 +44,17 @@ def llm_call(client, text:str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
 
 async def anthropic_llm_call(client, text:str, modelId: str = DEFAULT_MODEL_ID):
     print("starting anthropic_llm_call")
+    if os.getenv("MOCK_LLM_RESPONSE", "false").lower() == "true":
+        print("Returning mock LLM response")
+        mock_response = {
+            "selectedEditorOrcId": "1234",
+            "selectedEditorPersonId": "1234",
+            "reasoning": "Mock LLM is enabled, so this is a mock response.",
+            "runnerUp": "No Runner up - mock response",
+            "filteredOutEditors": "None filtered for COI - mock response"
+        }
+        return json.dumps(mock_response)
+
     message = await client.messages.create(
         model=modelId,
         system="You are a JSON-only response system. You must always respond with valid, properly formatted JSON. Never include explanations, comments, or any text outside the JSON structure. Do not use markdown code blocks. Return only the raw JSON object.",
