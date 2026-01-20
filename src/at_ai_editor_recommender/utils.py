@@ -1,6 +1,7 @@
 import os
 import aioboto3
 import json
+import asyncio
 
 
 DEFAULT_MODEL_ID = 'us.amazon.nova-premier-v1:0'
@@ -46,6 +47,9 @@ async def anthropic_llm_call(client, text:str, modelId: str = DEFAULT_MODEL_ID):
     print("starting anthropic_llm_call")
     if os.getenv("MOCK_LLM_RESPONSE", "false").lower() == "true":
         print("Returning mock LLM response")
+        delay = float(os.getenv("MOCK_LLM_DELAY", "0"))
+        if delay > 0:
+            await asyncio.sleep(delay)
         mock_response = {
             "selectedEditorOrcId": "1234",
             "selectedEditorPersonId": "1234",
