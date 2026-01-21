@@ -1,6 +1,6 @@
 [project]
 name = "at-ai-editor-recommender"
-version = "1.2.2"
+version = "1.2.3"
 description = "AI editor recommender"
 readme = "README.md"
 requires-python = "==3.12.*"

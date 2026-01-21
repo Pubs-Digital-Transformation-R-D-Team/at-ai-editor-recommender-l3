@@ -2,11 +2,11 @@ import os
 import aioboto3
 import json
 import asyncio
-
+import logging
 
 DEFAULT_MODEL_ID = 'us.amazon.nova-premier-v1:0'
 DEFAULT_SYSTEM = [{ "text": "You are an expert Chemistry Editor"}]
-
+logger = logging.getLogger(__name__)
 
 def llm_call_lc(client, text:str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
     inf_params = {"maxTokens": 4096, "topP": 0.1, "temperature": 0.0, "topK": 20}
@@ -44,12 +44,12 @@ def llm_call(client, text:str, modelId=DEFAULT_MODEL_ID, system=DEFAULT_SYSTEM):
 
 
 async def anthropic_llm_call(client, text:str, modelId: str = DEFAULT_MODEL_ID):
-    print("starting anthropic_llm_call")
+    logger.info("starting anthropic_llm_call")
     if os.getenv("MOCK_LLM_RESPONSE", "false").lower() == "true":
-        print("Returning mock LLM response")
+        logger.info("Returning mock LLM response")
         delay = float(os.getenv("MOCK_LLM_DELAY", "0"))
         if delay > 0:
-            print("Simulating delay of", delay, "ms")
+            logger.info(f"Simulating delay of {delay} ms")
             await asyncio.sleep(delay/1_000) # convert milliseconds to seconds
         mock_response = {
             "selectedEditorOrcId": "1234",
@@ -78,7 +78,7 @@ async def anthropic_llm_call(client, text:str, modelId: str = DEFAULT_MODEL_ID):
         top_p=0.1,
         temperature=0.0
     )
-    print("finished anthropic_llm_call")
+    logger.info("finished anthropic_llm_call")
     return message.content[0].text
 
     
