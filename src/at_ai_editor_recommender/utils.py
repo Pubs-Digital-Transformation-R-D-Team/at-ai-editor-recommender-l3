@@ -49,7 +49,8 @@ async def anthropic_llm_call(client, text:str, modelId: str = DEFAULT_MODEL_ID):
         print("Returning mock LLM response")
         delay = float(os.getenv("MOCK_LLM_DELAY", "0"))
         if delay > 0:
-            await asyncio.sleep(delay)
+            print("Simulating delay of", delay, "ms")
+            await asyncio.sleep(delay/1_000) # convert milliseconds to seconds
         mock_response = {
             "selectedEditorOrcId": "1234",
             "selectedEditorPersonId": "1234",
