@@ -1,3 +1,5 @@
+import json
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict, Annotated, Literal, Optional, ClassVar
@@ -243,7 +245,7 @@ class EditorAssignmentWorkflow:
         self.logger.info("Editor assignment result: %s", llm_response)
 
         # Make the actual API call to assign the editor
-        await self._call_assign_api(manuscript_submission, llm_response.get("selectedEditorPersonId", ""))
+        await self._call_assign_api(manuscript_submission, llm_response.get("selectedEditorPersonId", ""), state)
 
         assignment_result = f"Editor with editor_id of {llm_response.get("selectedEditorPersonId", "")} assigned to manuscript_number: {manuscript_submission.manuscript_number}"
         return EditorAssignmentWorkflow._make_assignment_response(llm_response, assignment_result)
@@ -259,7 +261,7 @@ class EditorAssignmentWorkflow:
             "runner_up": output.get("runnerUp", "")
         }
 
-    async def _call_assign_api(self, manuscript_submission, editor_id):
+    async def _call_assign_api(self, manuscript_submission, editor_id, state):
         """Make the API call to assign the editor."""
         if not self._assign_url:
             raise RuntimeError("Please provide ASSIGN_URL environment variable")
@@ -279,7 +281,7 @@ class EditorAssignmentWorkflow:
                     self.logger.info(f"Assign API response: {api_response}")
                 except aiohttp.ClientResponseError as e:
                     response_body = await resp.text()
-                    e.response_text = response_body
+                    e.response_text = EditorAssignmentWorkflow.add_llm_response_to_body(response_body, state)
                     raise
 
         self.logger.info(
@@ -357,3 +359,14 @@ class EditorAssignmentWorkflow:
             logging.info(step)
             final_state = step
         return final_state
+
+    @staticmethod
+    def _make_llm_response_from_state(state):
+        llm_response = EditorAssignmentWorkflow._extract_editor_assignment_output(state['editor_assignment_result'])
+        return EditorAssignmentWorkflow._make_assignment_response(llm_response, "Assignment Failed")
+
+    @staticmethod
+    def add_llm_response_to_body(body, state):
+        response = json.loads(body)
+        response["llm_response"] = EditorAssignmentWorkflow._make_llm_response_from_state(state)
+        return json.dumps(response)

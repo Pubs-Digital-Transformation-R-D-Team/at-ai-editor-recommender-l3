@@ -111,7 +111,7 @@ async def readiness_check():
         )
 
 
-def _extract_error_from_response_body(exception: aiohttp.ClientResponseError) -> tuple[str, str]:
+def _extract_error_from_response_body(exception: aiohttp.ClientResponseError) -> tuple[str, str, Any]:
     """Extract error code and message from ClientResponseError JSON response body.
 
     Returns:
@@ -119,6 +119,7 @@ def _extract_error_from_response_body(exception: aiohttp.ClientResponseError) ->
     """
     error_message = exception.message or str(exception)
     error_code = ERROR_CODE_DOWNSTREAM_API
+    data = None
 
     try:
         # Check if we have the response body attached as custom attribute
@@ -133,11 +134,14 @@ def _extract_error_from_response_body(exception: aiohttp.ClientResponseError) ->
                 if 'errorCode' in data_section:
                     error_code = data_section['errorCode']
 
+            if 'llm_response' in response_data:
+                data = response_data['llm_response']
+
     except (json.JSONDecodeError, KeyError, AttributeError, TypeError) as parse_error:
         logger.warning(f"Could not parse error response JSON: {parse_error}")
         # Keep the original error message if JSON parsing fails
 
-    return error_code, error_message
+    return error_code, error_message, data
 
 
 @app.post("/execute_workflow", response_model=ApiResponse, response_model_exclude_none=True)
@@ -165,11 +169,12 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
         logger.error(f"Downstream API error: Status {e.status}, Message: {e.message}")
 
         # Extract detailed error information from response body
-        error_code, error_message = _extract_error_from_response_body(e)
+        error_code, error_message, data = _extract_error_from_response_body(e)
 
         error_response = ErrorResponse(
             errorCode=error_code,
-            errorMessage=error_message
+            errorMessage=error_message,
+            data = data
         )
         return JSONResponse(status_code=e.status, content=error_response.model_dump())
 
