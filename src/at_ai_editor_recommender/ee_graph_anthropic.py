@@ -12,6 +12,7 @@ from at_ai_editor_recommender.utils import load_file, anthropic_llm_call
 from at_ai_editor_recommender.prompts import EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3
 from at_ai_editor_recommender.editor_assignment_json_parser import EditorAssignmentJsonParser
 from at_ai_editor_recommender.ee_api_adapter import get_adapter_for_url
+from at_ai_editor_recommender.memory import save_assignment_to_memory, search_similar_assignments, format_past_assignments_for_prompt
 from anthropic import AsyncAnthropicBedrock
 
 load_dotenv()
@@ -50,7 +51,8 @@ class EditorAssignmentWorkflow:
     VERIFICATION_PASSED = "Verification passed"
     VERIFICATION_FAILED = "Verification failed"
 
-    def __init__(self, client=None, model_id=DEFAULT_MODEL_ID, region_name=REGION_NAME):
+    def __init__(self, client=None, model_id=DEFAULT_MODEL_ID, region_name=REGION_NAME,
+                 checkpointer=None, store=None):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initializing EditorAssignmentWorkflow")
         self.logger.info("Using model_id: %s", model_id)
@@ -64,8 +66,17 @@ class EditorAssignmentWorkflow:
         self._model_id = model_id
         self._region_name = region_name
         self._client = client or self._setup_bedrock_client()
+
+        # ── Memory (Tier 2: Session, Tier 3: Long-term) ──────────────────
+        self._checkpointer = checkpointer   # Postgres checkpointer for session memory
+        self._store = store                 # Postgres store for long-term memory
+
         self._graph = self._build_graph()
         self.logger.info("EditorAssignmentWorkflow Initialized successfully")
+        if checkpointer:
+            self.logger.info("Session Memory (checkpointer) is ENABLED")
+        if store:
+            self.logger.info("Long-term Memory (store) is ENABLED")
 
 
     def _setup_bedrock_client(self):
@@ -158,10 +169,38 @@ class EditorAssignmentWorkflow:
         available_editors = state["available_editors"]
         journal_specific_rules = self._resolve_journal_specific_rules(manuscript_submission.journal_id)
 
+        # ── Long-term Memory READ: search for similar past assignments ────
+        past_assignments_text = ""
+        if self._store:
+            try:
+                # Use manuscript_information as the search query — it contains
+                # title, abstract, keywords which are the best semantic signal
+                query = (manuscript_information or "")[:1000]  # Cap at 1000 chars for search
+                if query.strip():
+                    similar = await search_similar_assignments(
+                        self._store,
+                        query=query,
+                        journal_id=manuscript_submission.journal_id,
+                        limit=5,
+                    )
+                    past_assignments_text = format_past_assignments_for_prompt(similar)
+                    if past_assignments_text:
+                        self.logger.info(
+                            "Long-term Memory: injecting %d similar past assignments into prompt",
+                            len(similar),
+                        )
+                    else:
+                        self.logger.info("Long-term Memory: no similar past assignments found")
+            except Exception as e:
+                # Never let memory reads break the main workflow
+                self.logger.warning("Long-term Memory search failed (continuing without): %s", e)
+
+        # Build the prompt — with or without past assignment context
         text = EDITOR_ASSIGNMENT_PROMPT_TEMPLATE_V3.format(
             journal_specific_rules=journal_specific_rules,
             manuscript_information=manuscript_information,
-            available_editors=available_editors
+            available_editors=available_editors,
+            past_assignments=past_assignments_text,
         )
 
         msg = await anthropic_llm_call(
@@ -341,24 +380,62 @@ class EditorAssignmentWorkflow:
         graph.add_edge("skip_assignment", END)
         graph.add_edge("use_existing_assignment", END)
 
-        return graph.compile()
+        # Compile with optional session memory (checkpointer) and long-term memory (store)
+        compile_kwargs = {}
+        if self._checkpointer:
+            compile_kwargs["checkpointer"] = self._checkpointer
+        if self._store:
+            compile_kwargs["store"] = self._store
+
+        return graph.compile(**compile_kwargs)
 
     async def _run(self, manuscript_submission):
         initial_state = {"manuscript_submission": manuscript_submission}
         return self._graph.ainvoke(initial_state)
 
         
-    async def _astream(self, manuscript_submission):
+    async def _astream(self, manuscript_submission, config=None):
         initial_state = {"manuscript_submission": manuscript_submission}
-        async for item in self._graph.astream(initial_state):
+        async for item in self._graph.astream(initial_state, config=config):
             yield item
 
     async def async_execute_workflow(self, manuscript_submission):
+        # Build config with thread_id for session memory (checkpointing)
+        config = None
+        if self._checkpointer:
+            thread_id = f"{manuscript_submission.journal_id}-{manuscript_submission.manuscript_number}"
+            config = {"configurable": {"thread_id": thread_id}}
+            self.logger.info("Session Memory: using thread_id=%s", thread_id)
+
         final_state = None
-        async for step in self._astream(manuscript_submission):
+        async for step in self._astream(manuscript_submission, config=config):
             logging.info(step)
             final_state = step
+
+        # Save completed assignment to long-term memory
+        if self._store and final_state:
+            # Resolve the actual state dict from the stream output
+            state_to_save = self._resolve_final_state(final_state, manuscript_submission)
+            if state_to_save:
+                await save_assignment_to_memory(self._store, state_to_save)
+
         return final_state
+
+    @staticmethod
+    def _resolve_final_state(stream_output: dict, manuscript_submission=None) -> Optional[dict]:
+        """Extract the state dict from the last stream output.
+        
+        Stream output is {node_name: node_output}. The terminal node output
+        contains editor_person_id but not manuscript_submission, so we inject
+        it from the original request.
+        """
+        for node_name, node_output in stream_output.items():
+            if isinstance(node_output, dict) and "editor_person_id" in node_output:
+                resolved = dict(node_output)
+                if manuscript_submission and "manuscript_submission" not in resolved:
+                    resolved["manuscript_submission"] = manuscript_submission
+                return resolved
+        return None
 
     @staticmethod
     def _make_llm_response_from_state(state):

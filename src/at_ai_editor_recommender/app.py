@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Any, Optional, Union
 from at_ai_editor_recommender.ee_graph_anthropic import EditorAssignmentWorkflow, ManuscriptSubmission
+from at_ai_editor_recommender.memory import create_checkpointer, create_store
 import uvicorn
 import logging
 from contextlib import asynccontextmanager
@@ -72,8 +73,26 @@ workflow = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-     # Initialize workflow once
-    workflow["ee"] = EditorAssignmentWorkflow(model_id=MODEL_ID)
+    # Initialize memory layers if Postgres is configured
+    checkpointer = None
+    store = None
+
+    if os.getenv("POSTGRES_URI"):
+        logger.info("Postgres URI found — initializing Session Memory & Long-term Memory")
+        try:
+            checkpointer = await create_checkpointer()
+            store = await create_store()
+        except Exception as e:
+            logger.warning("Memory initialization failed (running without persistence): %s", e)
+    else:
+        logger.info("No POSTGRES_URI set — running without persistent memory")
+
+    # Initialize workflow with optional memory
+    workflow["ee"] = EditorAssignmentWorkflow(
+        model_id=MODEL_ID,
+        checkpointer=checkpointer,
+        store=store,
+    )
     yield
 
 logger = logging.getLogger(__name__)

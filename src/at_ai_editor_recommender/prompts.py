@@ -172,4 +172,6 @@ Return only a JSON object with the following fields and no other text or explana
 
 ## Available Editors
 {available_editors}
+
+{past_assignments}
 """
