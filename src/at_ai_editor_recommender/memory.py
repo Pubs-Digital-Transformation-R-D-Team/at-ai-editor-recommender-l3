@@ -83,11 +83,22 @@ async def create_checkpointer():
         result = await graph.ainvoke(None, config)  # None = use saved state
     """
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+    from psycopg_pool import AsyncConnectionPool
 
     uri = _get_postgres_uri()
     logger.info("Initializing Session Memory (Postgres Checkpointer) at %s", uri.split("@")[-1])
 
-    checkpointer = AsyncPostgresSaver.from_conn_string(uri)
+    # In langgraph-checkpoint-postgres v3.x, from_conn_string() returns an async
+    # context manager. For long-lived FastAPI apps, we create the connection pool
+    # ourselves and pass it to the checkpointer.
+    pool = AsyncConnectionPool(
+        conninfo=uri,
+        max_size=5,
+        open=False,  # We'll open it explicitly
+    )
+    await pool.open()
+
+    checkpointer = AsyncPostgresSaver(pool)
 
     # Create the checkpoint tables if they don't exist
     await checkpointer.setup()
@@ -151,14 +162,24 @@ async def create_store():
         )
     """
     from langgraph.store.postgres.aio import AsyncPostgresStore
+    from psycopg_pool import AsyncConnectionPool
 
     uri = _get_postgres_uri()
     logger.info("Initializing Long-term Memory (Postgres Store + pgvector) at %s", uri.split("@")[-1])
 
+    # In langgraph v3.x, from_conn_string() returns an async context manager.
+    # For long-lived FastAPI apps, we create the pool ourselves.
+    pool = AsyncConnectionPool(
+        conninfo=uri,
+        max_size=5,
+        open=False,
+    )
+    await pool.open()
+
     # index configuration enables semantic search via pgvector
     # The "fields" list tells the store which value fields to embed
-    store = AsyncPostgresStore.from_conn_string(
-        uri,
+    store = AsyncPostgresStore(
+        pool,
         index={
             "dims": 768,                      # Embedding dimensions
             "embed": "text",                   # Use built-in text embedding
