@@ -8,8 +8,8 @@ Tier 2 - SESSION MEMORY
     Survives restarts. Resumes after human approval. Audit trail.
 
 Tier 3 - LONG-TERM MEMORY
-    LangGraph Store + Postgres Slave + pgvector
-    Lessons learned. Editor patterns. Semantic search.
+    LangGraph Store + Postgres
+    Lessons learned. Editor patterns. Key-value store (semantic search later).
 
 Usage:
     from at_ai_editor_recommender.memory import create_checkpointer, create_store
@@ -176,19 +176,15 @@ async def create_store():
     )
     await pool.open()
 
-    # index configuration enables semantic search via pgvector
-    # The "fields" list tells the store which value fields to embed
-    store = AsyncPostgresStore(
-        pool,
-        index={
-            "dims": 768,                      # Embedding dimensions
-            "embed": "text",                   # Use built-in text embedding
-            "fields": ["reasoning", "topics"], # Fields to create vectors from
-        }
-    )
+    # For the POC, we use the store as a key-value store without vector
+    # embeddings.  Semantic search (pgvector) will be enabled later once:
+    #   1. The DBA enables the pgvector extension on RDS
+    #   2. We configure an embedding model (e.g., Bedrock Titan)
+    # Until then, aput / aget / alist work; asearch uses exact-match only.
+    store = AsyncPostgresStore(pool)
 
     await store.setup()
-    logger.info("Long-term Memory ready — assignments will persist with vector search")
+    logger.info("Long-term Memory ready \u2014 assignments will persist to Postgres")
 
     return store
 
@@ -251,8 +247,8 @@ async def search_similar_assignments(store, query: str, journal_id: Optional[str
     """
     Search long-term memory for similar past assignments.
 
-    Uses pgvector semantic search to find assignments where the reasoning
-    or topics are similar to the query.
+    Searches by namespace prefix and returns past assignments.
+    (Semantic vector search will be added later with pgvector + Bedrock embeddings.)
 
     Args:
         store: The AsyncPostgresStore instance
