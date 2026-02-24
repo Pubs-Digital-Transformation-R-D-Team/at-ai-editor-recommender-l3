@@ -257,6 +257,10 @@ class EditorAssignmentWorkflow:
         manuscript_submission = state["manuscript_submission"]
         llm_response = EditorAssignmentWorkflow._extract_editor_assignment_output(state["editor_assignment_result"])
         self.logger.info("Editor assignment result: %s", llm_response)
+
+        # ── Long-term Memory WRITE (record the skip decision too) ──
+        await self._save_to_long_term_memory(manuscript_submission, llm_response)
+
         assignment_result = f"No editor assigned to manuscript_number: {manuscript_submission.manuscript_number}"
         return EditorAssignmentWorkflow._make_assignment_response(llm_response, assignment_result)
 
@@ -282,6 +286,9 @@ class EditorAssignmentWorkflow:
         manuscript_submission = state["manuscript_submission"]
         llm_response = EditorAssignmentWorkflow._extract_editor_assignment_output(state["editor_assignment_result"])
         self.logger.info("Editor assignment result: %s", llm_response)
+
+        # ── Long-term Memory WRITE (before API call so data is saved even on failure) ──
+        await self._save_to_long_term_memory(manuscript_submission, llm_response)
 
         # Make the actual API call to assign the editor
         await self._call_assign_api(manuscript_submission, llm_response.get("selectedEditorPersonId", ""), state)
@@ -412,14 +419,29 @@ class EditorAssignmentWorkflow:
             logging.info(step)
             final_state = step
 
-        # Save completed assignment to long-term memory
-        if self._store and final_state:
-            # Resolve the actual state dict from the stream output
-            state_to_save = self._resolve_final_state(final_state, manuscript_submission)
-            if state_to_save:
-                await save_assignment_to_memory(self._store, state_to_save)
-
         return final_state
+
+    async def _save_to_long_term_memory(self, manuscript_submission, llm_response: dict):
+        """Save editor assignment to long-term memory.
+        
+        Called inside graph nodes (before any external API calls) so the
+        assignment decision is persisted even if the downstream call fails.
+        """
+        if not self._store:
+            return
+        try:
+            memory_state = {
+                "manuscript_submission": manuscript_submission,
+                "editor_id": llm_response.get("selectedEditorOrcId", ""),
+                "editor_person_id": llm_response.get("selectedEditorPersonId", ""),
+                "reasoning": llm_response.get("reasoning", ""),
+                "runner_up": llm_response.get("runnerUp", ""),
+                "filtered_out_editors": llm_response.get("filteredOutEditors", ""),
+            }
+            self.logger.info("Long-term Memory: saving assignment for %s", manuscript_submission.manuscript_number)
+            await save_assignment_to_memory(self._store, memory_state)
+        except Exception as e:
+            self.logger.warning("Long-term Memory save failed (continuing): %s", e)
 
     @staticmethod
     def _resolve_final_state(stream_output: dict, manuscript_submission=None) -> Optional[dict]:
