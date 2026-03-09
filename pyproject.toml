@@ -1,6 +1,6 @@
 [project]
 name = "at-ai-editor-recommender"
-version = "1.2.9"
+version = "1.2.10"
 description = "AI editor recommender"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -18,6 +18,8 @@ dependencies = [
     "anthropic",
     "jinja2>=3.1.6",
     "ddtrace>=2.16.0",  # Datadog tracing
+    # AWS Strands Agents SDK (USE_STRANDS=true to activate)
+    "strands-agents>=0.1.0",
 ]
 
 [project.scripts]
