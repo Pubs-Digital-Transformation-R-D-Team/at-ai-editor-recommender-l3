@@ -35,5 +35,7 @@ spec:
           value: http://ee-api-svc.er.svc.cluster.local:8003/v1/processManuscript
         - name: ASSIGN_URL
           value: http://ee-api-svc.er.svc.cluster.local:8003/v1/assignManuscript
+        - name: S3_SESSIONS_BUCKET
+          value: "your-s3-bucket-name"
       imagePullSecrets:
       - name: er-ghcr-secret

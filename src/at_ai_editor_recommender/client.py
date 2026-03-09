@@ -1,4 +1,4 @@
-from at_ai_editor_recommender.ee_graph import EditorAssignmentWorkflow, ManuscriptSubmission
+from at_ai_editor_recommender.ee_agent_strands import EditorAssignmentAgent, ManuscriptSubmission
 import logging
 import asyncio
 
@@ -6,13 +6,12 @@ async def main():
 
     manuscript_submission = ManuscriptSubmission(
         manuscript_number="TEST_42",
-        # hardcoded for now, later can be passed in
-        coden="JRN002",
-
+        journal_id="JRN002",
+        is_resubmit=False,
     )
 
-    workflow = EditorAssignmentWorkflow()
-    await workflow.async_execute_workflow(manuscript_submission)
+    agent = EditorAssignmentAgent()
+    await agent.async_execute_workflow(manuscript_submission)
 
 
 if __name__ == "__main__":
