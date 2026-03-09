@@ -1,23 +1,12 @@
 """
 Memory module for Editor Assignment Workflow.
 
-Implements two memory tiers from the architecture:
-
-Tier 2 - SESSION MEMORY
-    LangGraph Checkpointer + Postgres Master
-    Survives restarts. Resumes after human approval. Audit trail.
-
-Tier 3 - LONG-TERM MEMORY
-    LangGraph Store + Postgres
-    Lessons learned. Editor patterns. Key-value store (semantic search later).
+Implements Tier 3 long-term memory using AsyncPostgresStore (Postgres).
+Session memory (Tier 2) is handled by S3SessionManager in ee_agent_strands.py.
 
 Usage:
-    from at_ai_editor_recommender.memory import create_checkpointer, create_store
+    from at_ai_editor_recommender.memory import create_store
 
-    # Session memory (checkpointer)
-    checkpointer = await create_checkpointer()
-
-    # Long-term memory (store)
     store = await create_store()
 """
 
@@ -41,74 +30,7 @@ def _get_postgres_uri() -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  TIER 2: SESSION MEMORY — LangGraph Checkpointer + Postgres
-# ═══════════════════════════════════════════════════════════════════════════════
-#
-#  What it does:
-#    - Saves workflow state to Postgres AFTER EACH NODE executes
-#    - If pod crashes mid-workflow, you can resume from last checkpoint
-#    - Every run is identified by a unique thread_id
-#    - Full audit trail of every step
-#
-#  How it works:
-#    1. Graph runs node "fetch_manuscript_data"
-#    2. Checkpointer saves State to Postgres → checkpoint_1
-#    3. Graph runs node "generate_editor_recommendation"
-#    4. Checkpointer saves State to Postgres → checkpoint_2
-#    5. Pod crashes! 💥
-#    6. Pod restarts, loads checkpoint_2 from Postgres
-#    7. Graph resumes from "verify_recommendation" (next node)
-#
-# ═══════════════════════════════════════════════════════════════════════════════
-
-async def create_checkpointer():
-    """
-    Create an async Postgres checkpointer for session memory.
-
-    The checkpointer automatically saves LangGraph state after each node.
-    Uses the `langgraph-checkpoint-postgres` package.
-
-    Returns:
-        AsyncPostgresSaver instance (used as `checkpointer` in graph.compile())
-
-    Example:
-        checkpointer = await create_checkpointer()
-        graph = workflow_builder.compile(checkpointer=checkpointer)
-
-        # Run with a thread_id to enable resume
-        config = {"configurable": {"thread_id": "manuscript-MS12345"}}
-        result = await graph.ainvoke(initial_state, config)
-
-        # Later, resume from where it stopped:
-        result = await graph.ainvoke(None, config)  # None = use saved state
-    """
-    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-    from psycopg_pool import AsyncConnectionPool
-
-    uri = _get_postgres_uri()
-    logger.info("Initializing Session Memory (Postgres Checkpointer) at %s", uri.split("@")[-1])
-
-    # In langgraph-checkpoint-postgres v3.x, from_conn_string() returns an async
-    # context manager. For long-lived FastAPI apps, we create the connection pool
-    # ourselves and pass it to the checkpointer.
-    pool = AsyncConnectionPool(
-        conninfo=uri,
-        max_size=5,
-        open=False,  # We'll open it explicitly
-    )
-    await pool.open()
-
-    checkpointer = AsyncPostgresSaver(pool)
-
-    # Create the checkpoint tables if they don't exist
-    await checkpointer.setup()
-    logger.info("Session Memory ready — checkpoints will persist to Postgres")
-
-    return checkpointer
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  TIER 3: LONG-TERM MEMORY — LangGraph Store + Postgres + pgvector
+#  TIER 3: LONG-TERM MEMORY — AsyncPostgresStore
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 #  What it does:

@@ -9,17 +9,14 @@ dependencies = [
     "aiohttp>=3.12.15",
     "boto3>=1.40.6",
     "fastapi>=0.116.1",
-    "langchain-aws>=0.2.30",
-    "langchain-mcp-adapters>=0.1.9",
-    "langgraph>=0.6.4",
-    "langgraph-checkpoint-postgres>=2.0.0",
     "psycopg[binary]>=3.2.0",
     "uvicorn>=0.35.0",
-    "anthropic",
     "jinja2>=3.1.6",
     "ddtrace>=2.16.0",  # Datadog tracing
-    # AWS Strands Agents SDK (USE_STRANDS=true to activate)
+    # AWS Strands Agents SDK
     "strands-agents>=1.29.0",
+    # Long-term memory (Tier 3) — Postgres store
+    "langgraph-checkpoint-postgres>=2.0.0",
 ]
 
 [project.scripts]

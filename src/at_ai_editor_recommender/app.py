@@ -10,17 +10,9 @@ import aiohttp
 import json
 from dotenv import load_dotenv
 
-# ── Backend selector: set USE_STRANDS=true to use AWS Strands instead of LangGraph ──
-_USE_STRANDS = os.getenv("USE_STRANDS", "false").lower() == "true"
-
-if _USE_STRANDS:
-    from at_ai_editor_recommender.ee_agent_strands import EditorAssignmentAgent as _WorkflowClass
-    from at_ai_editor_recommender.ee_agent_strands import ManuscriptSubmission
-    from at_ai_editor_recommender.memory import create_store
-else:
-    from at_ai_editor_recommender.ee_graph_anthropic import EditorAssignmentWorkflow as _WorkflowClass
-    from at_ai_editor_recommender.ee_graph_anthropic import ManuscriptSubmission
-    from at_ai_editor_recommender.memory import create_checkpointer, create_store
+from at_ai_editor_recommender.ee_agent_strands import EditorAssignmentAgent
+from at_ai_editor_recommender.ee_agent_strands import ManuscriptSubmission
+from at_ai_editor_recommender.memory import create_store
 
 load_dotenv()
 
@@ -83,11 +75,9 @@ workflow = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    backend = "Strands" if _USE_STRANDS else "LangGraph"
-    logger.info("Starting Editor Recommender — backend=%s model=%s", backend, MODEL_ID)
+    logger.info("Starting Editor Recommender — backend=Strands model=%s", MODEL_ID)
 
     store = None
-
     if os.getenv("POSTGRES_URI"):
         logger.info("Postgres URI found — initializing Long-term Memory (Tier 3)")
         try:
@@ -97,26 +87,10 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("No POSTGRES_URI set — running without persistent memory")
 
-    if _USE_STRANDS:
-        # Strands backend — no checkpointer; session memory via S3SessionManager
-        workflow["ee"] = _WorkflowClass(
-            model_id=MODEL_ID,
-            store=store,
-        )
-    else:
-        # LangGraph backend — checkpointer + store
-        checkpointer = None
-        if os.getenv("POSTGRES_URI"):
-            try:
-                checkpointer = await create_checkpointer()
-            except Exception as e:
-                logger.warning("Session Memory (checkpointer) init failed: %s", e)
-        workflow["ee"] = _WorkflowClass(
-            model_id=MODEL_ID,
-            checkpointer=checkpointer,
-            store=store,
-        )
-
+    workflow["ee"] = EditorAssignmentAgent(
+        model_id=MODEL_ID,
+        store=store,
+    )
     yield
 
 logger = logging.getLogger(__name__)
@@ -197,22 +171,7 @@ async def execute_workflow(submission: ManuscriptSubmissionRequest):
         )
 
         result = await workflow["ee"].async_execute_workflow(manuscript_submission)
-
-        # LangGraph returns {node_name: node_output_dict}
-        # Strands returns a flat dict directly
-        if 'editor_person_id' in result:
-            # Strands flat dict
-            response = result
-        elif 'execute_assignment' in result:
-            response = result.get('execute_assignment')
-        elif 'use_existing_assignment' in result:
-            response = result.get('use_existing_assignment')
-        elif 'skip_assignment' in result:
-            response = result.get('skip_assignment')
-        else:
-            response = result
-
-        return SuccessResponse(data=response)
+        return SuccessResponse(data=result)
 
     except aiohttp.ClientResponseError as e:
         # Handle HTTP errors from EE API and forward the status code
