@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Any, Optional, Union
 import uvicorn
 import logging
@@ -52,9 +52,7 @@ class AssignEditorResult(BaseModel):
     runner_up: Optional[str] = None
     filtered_out_editors: Optional[str] = None
 
-    class Config:
-        orm_mode = True
-        exclude_none = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SuccessResponse(BaseModel):
