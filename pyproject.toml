@@ -19,7 +19,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "ddtrace>=2.16.0",  # Datadog tracing
     # AWS Strands Agents SDK (USE_STRANDS=true to activate)
-    "strands-agents>=0.1.0",
+    "strands-agents>=1.29.0",
 ]
 
 [project.scripts]
