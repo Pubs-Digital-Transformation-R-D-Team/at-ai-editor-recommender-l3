@@ -6,26 +6,21 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.3 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 
-# Install dependencies from the service-level pyproject.toml
-COPY strands_service/pyproject.toml /app/pyproject.toml
+# Install dependencies
+COPY strands_service/requirements.txt /app/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project --no-dev
+    uv pip install --system -r requirements.txt
 
 # Copy service code and shared data
 COPY strands_service/ /app/strands_service/
 COPY fake_data.py /app/fake_data.py
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-dev
-
 FROM base
+COPY --from=builder /usr/local/lib /usr/local/lib
+COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
-ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app"
 
 EXPOSE 8001
-
-ENV HOST="0.0.0.0"
-ENV PORT=8001
 
 CMD ["uvicorn", "strands_service.server:app", "--host", "0.0.0.0", "--port", "8001"]
