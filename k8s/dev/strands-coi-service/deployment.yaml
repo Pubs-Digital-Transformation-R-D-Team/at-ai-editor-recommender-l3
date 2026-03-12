@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strands-coi
+  namespace: er
+  labels:
+    app: strands-coi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: strands-coi
+  template:
+    metadata:
+      labels:
+        app: strands-coi
+    spec:
+      serviceAccountName: er-bedrock-sa
+      containers:
+      - name: strands-coi
+        image: ghcr.io/acspubsedsg/at-ai-editor-recommender-strands-coi:latest
+        ports:
+        - containerPort: 8001
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+          requests:
+            cpu: "100m"
+            memory: "512Mi"
+        env:
+        - name: LANGGRAPH_URL
+          value: http://langgraph-svc.er.svc.cluster.local:8000
+        - name: AWS_REGION
+          value: us-east-1
+        # Set MOCK_COI=true to bypass Bedrock (rule-based mode)
+        # - name: MOCK_COI
+        #   value: "true"
+        readinessProbe:
+          httpGet:
+            path: /.well-known/agent.json
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /.well-known/agent.json
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 30
+      imagePullSecrets:
+      - name: er-ghcr-secret

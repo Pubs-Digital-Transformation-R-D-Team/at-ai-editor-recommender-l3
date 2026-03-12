@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langgraph-editor-recommender
+  namespace: er
+  labels:
+    app: langgraph-editor-recommender
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langgraph-editor-recommender
+  template:
+    metadata:
+      labels:
+        app: langgraph-editor-recommender
+    spec:
+      serviceAccountName: er-bedrock-sa
+      containers:
+      - name: langgraph-editor-recommender
+        image: ghcr.io/acspubsedsg/at-ai-editor-recommender-langgraph:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1024Mi"
+          requests:
+            cpu: "100m"
+            memory: "512Mi"
+        env:
+        - name: STRANDS_COI_URL
+          value: http://strands-coi-svc.er.svc.cluster.local:8001
+        - name: AWS_REGION
+          value: us-east-1
+        # Set MOCK_REACT=true to bypass Bedrock (rule-based mode)
+        # - name: MOCK_REACT
+        #   value: "true"
+        readinessProbe:
+          httpGet:
+            path: /.well-known/agent.json
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /.well-known/agent.json
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+      imagePullSecrets:
+      - name: er-ghcr-secret

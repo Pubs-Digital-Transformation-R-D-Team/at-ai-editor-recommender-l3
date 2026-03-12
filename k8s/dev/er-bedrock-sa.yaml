@@ -1,0 +1,9 @@
+# Shared IRSA Service Account for both langgraph-service and strands-coi-service
+# Both pods use this SA to assume the Bedrock role via IRSA
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: er-bedrock-sa
+  namespace: er
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::412381768680:role/acs-gtsai-dev-eks-bedrock-clusterrole

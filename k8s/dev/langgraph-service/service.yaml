@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: langgraph-svc
+  namespace: er
+  labels:
+    app: langgraph-editor-recommender
+spec:
+  selector:
+    app: langgraph-editor-recommender
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
