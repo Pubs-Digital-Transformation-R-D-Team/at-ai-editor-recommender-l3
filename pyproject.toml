@@ -1,0 +1,10 @@
+[project]
+name = "at-ai-editor-recommender-l3"
+version = "1.4.0"
+description = "L3 multi-agent POC — LangGraph + Strands A2A + HITL editor assignment"
+readme = "README.md"
+requires-python = "==3.12.*"
+
+# This is the single source of truth for the version.
+# Both Docker images (langgraph + strands-coi) are tagged with this version.
+# Update this when releasing a new version — CI/CD picks it up automatically.

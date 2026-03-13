@@ -7,6 +7,7 @@ on:
     paths:
       - "langgraph_service/**"
       - "fake_data.py"
+      - "pyproject.toml"
       - ".github/workflows/docker-langgraph.yaml"
 
 env:
@@ -41,7 +42,7 @@ jobs:
       - name: Get version from pyproject.toml
         id: pyproject_version
         run: |
-          version=$(grep '^version' langgraph_service/pyproject.toml | head -1 | sed 's/version = "//;s/"//')
+          version=$(grep '^version' pyproject.toml | head -1 | sed 's/version = "//;s/"//')
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "Extracted version: $version"
 
