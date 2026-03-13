@@ -384,6 +384,13 @@ async def run_workflow(request: WorkflowRequest):
     }
 
 
+# ─── Health check ────────────────────────────────────────────────────────────
+
+@app.get("/health", tags=["Health"])
+async def health():
+    return {"status": "ok"}
+
+
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
