@@ -206,7 +206,7 @@ def _editor_card(profile: dict, label: str = "", highlight: bool = False) -> str
     match    = profile.get("topic_match", [])
     match_html = (
         _badges(match, "green") + " &nbsp;<small style='color:#888'>topic match</small>"
-        if match else "<small style='color:#AAA'>no direct topic overlap</small>"
+        if match else "<small style='color:#888'>no direct topic overlap</small>"
     )
     load_html = _load_bar(profile.get("current_load", 0), profile.get("max_load", 5))
     reason_html = (
@@ -216,9 +216,9 @@ def _editor_card(profile: dict, label: str = "", highlight: bool = False) -> str
     reasoning = profile.get("reasoning", "")
 
     return f"""
-<div class="card {cls}">
+<div class="card {cls}" style="color:#1a1a1a">
   <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem">
-    <strong style="font-size:1.05rem">{profile['name']}</strong>
+    <strong style="font-size:1.05rem; color:#1a1a1a">{profile['name']}</strong>
     {tag}
     {"<span class='badge badge-blue'>AI Pick #1</span>" if label == "ai_pick" else ""}
     {"<span class='badge badge-grey'>Runner-up</span>" if label == "runner_up" else ""}
@@ -227,7 +227,7 @@ def _editor_card(profile: dict, label: str = "", highlight: bool = False) -> str
   <div style="margin-bottom:0.4rem">{match_html}</div>
   <div style="margin-bottom:0.4rem">{load_html}</div>
   {reason_html}
-  <p style="font-size:0.82rem; color:#666; margin:0.4rem 0 0">{reasoning}</p>
+  <p style="font-size:0.82rem; color:#555; margin:0.4rem 0 0">{reasoning}</p>
 </div>
 """
 
@@ -409,15 +409,19 @@ def _render_ai_recommendation_summary(approved: list, flagged: list, profiles: d
         p = profiles.get(name, {"name": name})
         rank_label = "🥇 AI Recommendation #1" if i == 0 else f"🥈 Alternative #{i+1}"
         points = p.get("reasoning_points", [])
-        points_html = "".join(f"<li style='margin:2px 0; font-size:0.85rem'>{pt}</li>" for pt in points)
-        load = p.get("current_load", 0)
-        max_load = p.get("max_load", 5)
+        points_html = "".join(
+            f"<li style='margin:2px 0; font-size:0.85rem; color:#333'>{pt}</li>"
+            for pt in points
+        )
         exp_html = _badges(p.get("expertise", []), "blue")
+        score = p.get("topic_match_score", 0)
+        score_label = f"{score}% topic match" if score else "low topic match"
         rows.append(
             f"<div style='flex:1; min-width:220px; background:#EBF5FB; border-radius:8px; "
-            f"padding:0.9rem 1rem; border-left:4px solid {'#00479D' if i==0 else '#009CDE'}'>"
+            f"padding:0.9rem 1rem; border-left:4px solid {'#00479D' if i==0 else '#009CDE'}; color:#1a1a1a'>"
             f"<div style='font-weight:700; color:#00479D; margin-bottom:0.3rem'>{rank_label}</div>"
-            f"<div style='font-size:1rem; font-weight:600; margin-bottom:0.4rem'>{name}</div>"
+            f"<div style='font-size:1rem; font-weight:600; color:#1a1a1a; margin-bottom:0.3rem'>{name}</div>"
+            f"<div style='font-size:0.78rem; color:#555; margin-bottom:0.4rem'>Score: {score_label}</div>"
             f"<div style='margin-bottom:0.4rem'>{exp_html}</div>"
             f"<ul style='margin:0.3rem 0 0 0; padding-left:1.1rem'>{points_html}</ul>"
             f"</div>"
@@ -428,23 +432,29 @@ def _render_ai_recommendation_summary(approved: list, flagged: list, profiles: d
     for name in flagged:
         p = profiles.get(name, {"name": name})
         reason = p.get("coi_reason", "Conflict detected")
+        pts = p.get("reasoning_points", [])
+        pts_html = "".join(
+            f"<li style='margin:2px 0; font-size:0.82rem; color:#7B241C'>{pt}</li>"
+            for pt in pts
+        )
         flagged_items += (
-            f"<li style='margin:2px 0; font-size:0.85rem'>"
-            f"<strong>{name}</strong> — {reason}</li>"
+            f"<div style='margin-bottom:0.3rem; color:#7B241C'>"
+            f"<strong style='color:#C0392B'>{name}</strong> — {reason}</div>"
+            f"<ul style='margin:0; padding-left:1.1rem'>{pts_html}</ul>"
         )
 
     flagged_section = (
         f"<div style='background:#FDECEA; border-radius:8px; padding:0.8rem 1rem; "
-        f"border-left:4px solid #C0392B; min-width:200px'>"
-        f"<div style='font-weight:700; color:#C0392B; margin-bottom:0.3rem'>⛔ Excluded (COI)</div>"
-        f"<ul style='margin:0; padding-left:1.1rem'>{flagged_items}</ul>"
+        f"border-left:4px solid #C0392B; min-width:200px; color:#7B241C'>"
+        f"<div style='font-weight:700; color:#C0392B; margin-bottom:0.5rem'>⛔ Excluded (COI)</div>"
+        f"{flagged_items}"
         f"</div>"
         if flagged_items else ""
     )
 
     cards_html = "".join(rows)
     st.markdown(
-        f"<div style='background:#D6EAF8; border-radius:10px; padding:1rem 1.2rem; margin-bottom:1rem'>"
+        f"<div style='background:#D6EAF8; border-radius:10px; padding:1rem 1.2rem; margin-bottom:1rem; color:#1a1a1a'>"
         f"<div style='font-weight:700; color:#00479D; font-size:1rem; margin-bottom:0.7rem'>"
         f"🤖 AI Recommendation Summary"
         f"</div>"
@@ -453,6 +463,54 @@ def _render_ai_recommendation_summary(approved: list, flagged: list, profiles: d
         f"</div>"
         f"</div>",
         unsafe_allow_html=True,
+    )
+
+
+def _decision_option_card(
+    number: str,
+    action: str,
+    tag: str,
+    tag_bg: str,
+    tag_color: str,
+    border_color: str,
+    bg_color: str,
+    points: list[str],
+    reasoning: str,
+    score: int | None = None,
+    warn: str = "",
+) -> str:
+    """Render a rich decision-option card (HTML) for the HITL panel."""
+    pts_html = "".join(
+        f"<li style='margin:3px 0; font-size:0.85rem; color:#333'>{p}</li>"
+        for p in points
+    )
+    score_html = (
+        f"<span style='font-size:0.78rem; color:#555; margin-left:0.5rem'>Topic match score: {score}%</span>"
+        if score is not None else ""
+    )
+    warn_html = (
+        f"<div style='background:#FEF3E6; border:1px solid #E86A10; border-radius:5px; "
+        f"padding:0.4rem 0.7rem; margin-top:0.5rem; color:#7D4011; font-size:0.83rem'>⚠️ {warn}</div>"
+        if warn else ""
+    )
+    reasoning_html = (
+        f"<p style='font-size:0.82rem; color:#555; margin:0.5rem 0 0'><em>{reasoning}</em></p>"
+        if reasoning else ""
+    )
+    return (
+        f"<div style='border:2px solid {border_color}; border-radius:10px; padding:0.9rem 1.1rem; "
+        f"margin-bottom:0.7rem; background:{bg_color}; color:#1a1a1a'>"
+        f"  <div style='display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem'>"
+        f"    <span style='font-weight:800; font-size:1.05rem; color:{border_color}'>Option {number}</span>"
+        f"    <span style='font-size:0.97rem; font-weight:600; color:#1a1a1a'>{action}</span>"
+        f"    <span style='background:{tag_bg}; color:{tag_color}; border-radius:4px; "
+        f"    padding:0.15em 0.6em; font-size:0.76rem; font-weight:700'>{tag}</span>"
+        f"    {score_html}"
+        f"  </div>"
+        f"  <ul style='margin:0.3rem 0 0; padding-left:1.2rem'>{pts_html}</ul>"
+        f"  {reasoning_html}"
+        f"  {warn_html}"
+        f"</div>"
     )
 
 
@@ -520,26 +578,100 @@ def render_hitl():
 
     # ── Decision panel ────────────────────────────────────────────────────────
     st.subheader("🗳️  Your Decision")
+    st.caption(
+        "Each option below shows the AI's reasoning. Review, then select and submit."
+    )
 
-    options = {}
+    # Build structured option list
+    option_keys   = []
+    radio_labels  = []
+    cards_html    = []
+
     if len(approved) >= 1:
-        options["1"] = f"Assign **{approved[0]}** — AI recommendation"
+        p1   = profiles.get(approved[0], {"name": approved[0]})
+        cards_html.append(_decision_option_card(
+            number="1",
+            action=f"Assign {approved[0]}",
+            tag="⭐ AI Recommendation",
+            tag_bg="#00479D",
+            tag_color="#FFFFFF",
+            border_color="#00479D",
+            bg_color="#EBF5FB",
+            points=p1.get("reasoning_points", []),
+            reasoning=p1.get("reasoning", ""),
+            score=p1.get("topic_match_score"),
+        ))
+        option_keys.append("1")
+        radio_labels.append(f"1 · Assign {approved[0]} (AI recommendation)")
+
     if len(approved) >= 2:
-        options["2"] = f"Assign **{approved[1]}** — runner-up"
+        p2 = profiles.get(approved[1], {"name": approved[1]})
+        cards_html.append(_decision_option_card(
+            number="2",
+            action=f"Assign {approved[1]}",
+            tag="🥈 Runner-up",
+            tag_bg="#009CDE",
+            tag_color="#FFFFFF",
+            border_color="#009CDE",
+            bg_color="#EBF8FF",
+            points=p2.get("reasoning_points", []),
+            reasoning=p2.get("reasoning", ""),
+            score=p2.get("topic_match_score"),
+        ))
+        option_keys.append("2")
+        radio_labels.append(f"2 · Assign {approved[1]} (runner-up)")
+
     if flagged:
-        options["3"] = f"Override — assign **{flagged[0]}** (COI flagged)"
-    options["4"] = "Escalate to editor-in-chief"
+        pf = profiles.get(flagged[0], {"name": flagged[0]})
+        cards_html.append(_decision_option_card(
+            number="3",
+            action=f"Override — assign {flagged[0]}",
+            tag="⚠️ COI Flagged",
+            tag_bg="#FDECEA",
+            tag_color="#C0392B",
+            border_color="#C0392B",
+            bg_color="#FDF6F6",
+            points=pf.get("reasoning_points", []),
+            reasoning=pf.get("reasoning", ""),
+            score=pf.get("topic_match_score"),
+            warn="This editor has a detected conflict of interest. Override only if justified.",
+        ))
+        option_keys.append("3")
+        radio_labels.append(f"3 · Override — assign {flagged[0]} (COI flagged)")
 
-    radio_labels = list(options.values())
-    radio_keys   = list(options.keys())
+    # Escalate option
+    cards_html.append(
+        f"<div style='border:2px solid #888; border-radius:10px; padding:0.9rem 1.1rem; "
+        f"margin-bottom:0.7rem; background:#F8F8F8; color:#1a1a1a'>"
+        f"  <div style='display:flex; align-items:center; gap:0.6rem; margin-bottom:0.3rem'>"
+        f"    <span style='font-weight:800; font-size:1.05rem; color:#555'>Option 4</span>"
+        f"    <span style='font-size:0.97rem; font-weight:600; color:#1a1a1a'>Escalate to Editor-in-Chief</span>"
+        f"    <span style='background:#EAEAEA; color:#555; border-radius:4px; "
+        f"    padding:0.15em 0.6em; font-size:0.76rem; font-weight:700'>🔺 Escalate</span>"
+        f"  </div>"
+        f"  <p style='font-size:0.85rem; color:#555; margin:0.3rem 0 0'>"
+        f"  Use when no suitable editor is available or the COI situation requires senior review."
+        f"  </p>"
+        f"</div>"
+    )
+    option_keys.append("4")
+    radio_labels.append("4 · Escalate to Editor-in-Chief")
 
+    # Render option cards
+    st.markdown("".join(cards_html), unsafe_allow_html=True)
+
+    st.markdown(
+        "<div style='font-weight:600; color:#1a1a1a; margin-bottom:0.3rem'>Select your decision:</div>",
+        unsafe_allow_html=True,
+    )
     choice_label = st.radio(
-        "Select an option:",
+        "Select your decision:",
         radio_labels,
         index=0,
         key="hitl_radio",
+        label_visibility="collapsed",
     )
-    chosen_key = radio_keys[radio_labels.index(choice_label)]
+    chosen_key = option_keys[radio_labels.index(choice_label)]
 
     col_btn, col_note = st.columns([1, 3])
     with col_btn:
