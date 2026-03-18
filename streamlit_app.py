@@ -399,6 +399,63 @@ def render_coi_running():
     st.rerun()
 
 
+def _render_ai_recommendation_summary(approved: list, flagged: list, profiles: dict):
+    """Blue summary box showing AI's ranked suggestions with justification before the HITL form."""
+    if not approved:
+        return
+
+    rows = []
+    for i, name in enumerate(approved):
+        p = profiles.get(name, {"name": name})
+        rank_label = "🥇 AI Recommendation #1" if i == 0 else f"🥈 Alternative #{i+1}"
+        points = p.get("reasoning_points", [])
+        points_html = "".join(f"<li style='margin:2px 0; font-size:0.85rem'>{pt}</li>" for pt in points)
+        load = p.get("current_load", 0)
+        max_load = p.get("max_load", 5)
+        exp_html = _badges(p.get("expertise", []), "blue")
+        rows.append(
+            f"<div style='flex:1; min-width:220px; background:#EBF5FB; border-radius:8px; "
+            f"padding:0.9rem 1rem; border-left:4px solid {'#00479D' if i==0 else '#009CDE'}'>"
+            f"<div style='font-weight:700; color:#00479D; margin-bottom:0.3rem'>{rank_label}</div>"
+            f"<div style='font-size:1rem; font-weight:600; margin-bottom:0.4rem'>{name}</div>"
+            f"<div style='margin-bottom:0.4rem'>{exp_html}</div>"
+            f"<ul style='margin:0.3rem 0 0 0; padding-left:1.1rem'>{points_html}</ul>"
+            f"</div>"
+        )
+
+    # Flagged summary
+    flagged_items = ""
+    for name in flagged:
+        p = profiles.get(name, {"name": name})
+        reason = p.get("coi_reason", "Conflict detected")
+        flagged_items += (
+            f"<li style='margin:2px 0; font-size:0.85rem'>"
+            f"<strong>{name}</strong> — {reason}</li>"
+        )
+
+    flagged_section = (
+        f"<div style='background:#FDECEA; border-radius:8px; padding:0.8rem 1rem; "
+        f"border-left:4px solid #C0392B; min-width:200px'>"
+        f"<div style='font-weight:700; color:#C0392B; margin-bottom:0.3rem'>⛔ Excluded (COI)</div>"
+        f"<ul style='margin:0; padding-left:1.1rem'>{flagged_items}</ul>"
+        f"</div>"
+        if flagged_items else ""
+    )
+
+    cards_html = "".join(rows)
+    st.markdown(
+        f"<div style='background:#D6EAF8; border-radius:10px; padding:1rem 1.2rem; margin-bottom:1rem'>"
+        f"<div style='font-weight:700; color:#00479D; font-size:1rem; margin-bottom:0.7rem'>"
+        f"🤖 AI Recommendation Summary"
+        f"</div>"
+        f"<div style='display:flex; gap:0.8rem; flex-wrap:wrap; align-items:flex-start'>"
+        f"{cards_html}{flagged_section}"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # ── Stage: hitl ───────────────────────────────────────────────────────────────
 
 def render_hitl():
@@ -414,6 +471,9 @@ def render_hitl():
     approved = [a if isinstance(a, str) else a.get("editor") for a in coi.get("approved", [])]
     flagged_raw = coi.get("flagged", [])
     flagged  = [f if isinstance(f, str) else f.get("editor") for f in flagged_raw]
+
+    # ── AI Recommendation Summary ──────────────────────────────────────────────
+    _render_ai_recommendation_summary(approved, flagged, profiles)
 
     # ── A2A trace ─────────────────────────────────────────────────────────────
     with st.expander("🔗 Agent Communication Trace", expanded=False):

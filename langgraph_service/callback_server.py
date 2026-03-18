@@ -413,6 +413,53 @@ class FinalizeRequest(BaseModel):
     )
 
 
+def _build_reasoning_points(editor_name: str, editor: dict, matched: set, flagged_names: set) -> list[str]:
+    """Return a list of concise bullet-point reasons for/against this editor."""
+    points = []
+    load    = editor.get("current_load", 0)
+    max_load = editor.get("max_load", 5)
+    capacity = max_load - load
+    expertise = editor.get("expertise", [])
+
+    # Topic match
+    if matched:
+        points.append(f"✅ Expertise directly matches manuscript topics: {', '.join(sorted(matched))}")
+    else:
+        other = [e for e in expertise if e not in matched]
+        points.append(
+            f"⚠️ No direct topic overlap (expertise: {', '.join(other[:3]) or 'general'})"
+        )
+
+    # Workload / capacity
+    if capacity >= 3:
+        points.append(f"✅ Good capacity — {load}/{max_load} manuscripts assigned, {capacity} slots free")
+    elif capacity == 2:
+        points.append(f"✅ Available — {load}/{max_load} manuscripts assigned, {capacity} slots free")
+    elif capacity == 1:
+        points.append(f"⚠️ Nearly full — only 1 slot remaining ({load}/{max_load} manuscripts)")
+    else:
+        points.append(f"❌ At capacity — {load}/{max_load} manuscripts (no slots free)")
+
+    # COI status
+    if editor_name not in flagged_names:
+        points.append("✅ No conflict of interest detected with manuscript authors")
+    else:
+        points.append("❌ Conflict of interest — co-authorship or relationship with an author detected")
+
+    return points
+
+
+def _build_reasoning(editor_name: str, editor: dict, matched: set, flagged_names: set) -> str:
+    """Return a single-sentence summary suitable for the editor card."""
+    load     = editor.get("current_load", 0)
+    max_load = editor.get("max_load", 5)
+    capacity = max_load - load
+    topic_str = ", ".join(sorted(matched)) if matched else "general relevance"
+    coi_str   = "No COI detected" if editor_name not in flagged_names else "COI flagged"
+    cap_str   = f"{capacity} slot{'s' if capacity != 1 else ''} free"
+    return f"Topic match: {topic_str}. Capacity: {load}/{max_load} ({cap_str}). {coi_str}."
+
+
 def _editor_details(editor_name: str, coi_result: dict) -> dict:
     """Enrich an editor record with COI status and topic-match reasoning."""
     editor = next(
@@ -449,10 +496,8 @@ def _editor_details(editor_name: str, coi_result: dict) -> dict:
             if isinstance(flag_entry, dict)
             else str(flag_entry) if flag_entry else None
         ),
-        "reasoning": (
-            f"Expertise overlap with manuscript: {', '.join(sorted(matched)) or 'general match'}. "
-            f"Current workload: {editor.get('current_load', 0)}/{editor.get('max_load', 5)} manuscripts."
-        ),
+        "reasoning": _build_reasoning(editor_name, editor, matched, flagged_names),
+        "reasoning_points": _build_reasoning_points(editor_name, editor, matched, flagged_names),
     }
 
 
