@@ -384,6 +384,222 @@ async def run_workflow(request: WorkflowRequest):
     }
 
 
+# ─── Streamlit UI endpoints ──────────────────────────────────────────────────
+# These split the workflow into two phases so the Streamlit UI can render
+# the HITL decision panel between Phase 1 (COI check) and Phase 2 (finalize).
+
+
+class COICheckOnlyRequest(BaseModel):
+    manuscript_number: str = Field(
+        default="MS-999",
+        description="Manuscript number to run the COI check for",
+        examples=["MS-999"],
+    )
+
+
+class FinalizeRequest(BaseModel):
+    manuscript_number: str = Field(default="MS-999", examples=["MS-999"])
+    human_decision: str = Field(
+        description=(
+            "'1' = assign first approved editor, "
+            "'2' = assign second approved editor, "
+            "'3' = override (assign flagged editor), "
+            "'4' = escalate"
+        ),
+        examples=["1"],
+    )
+    coi_result: dict = Field(
+        description="The coi_result object returned by /check-coi",
+    )
+
+
+def _editor_details(editor_name: str, coi_result: dict) -> dict:
+    """Enrich an editor record with COI status and topic-match reasoning."""
+    editor = next(
+        (e for e in fake_data.EDITORS.values() if e["name"] == editor_name),
+        {"name": editor_name, "expertise": [], "current_load": 0, "max_load": 5},
+    )
+    ms = fake_data.MANUSCRIPTS.get("MS-999", {})
+    ms_topics = set(ms.get("topics", []))
+    expertise_set = set(editor.get("expertise", []))
+    matched = ms_topics & expertise_set
+
+    flagged_names = {
+        (f["editor"] if isinstance(f, dict) else f)
+        for f in coi_result.get("flagged", [])
+    }
+    flag_entry = next(
+        (f for f in coi_result.get("flagged", [])
+         if (f if isinstance(f, str) else f.get("editor")) == editor_name),
+        None,
+    )
+
+    return {
+        "name": editor_name,
+        "orcid": editor.get("id", "N/A"),
+        "person_id": editor.get("person_id", "N/A"),
+        "expertise": editor.get("expertise", []),
+        "current_load": editor.get("current_load", 0),
+        "max_load": editor.get("max_load", 5),
+        "topic_match": sorted(matched),
+        "topic_match_score": len(matched),
+        "coi_status": "flagged" if editor_name in flagged_names else "approved",
+        "coi_reason": (
+            flag_entry.get("reason", "Conflict detected")
+            if isinstance(flag_entry, dict)
+            else str(flag_entry) if flag_entry else None
+        ),
+        "reasoning": (
+            f"Expertise overlap with manuscript: {', '.join(sorted(matched)) or 'general match'}. "
+            f"Current workload: {editor.get('current_load', 0)}/{editor.get('max_load', 5)} manuscripts."
+        ),
+    }
+
+
+@app.post(
+    "/check-coi",
+    summary="Phase 1 — Load manuscript and run COI check",
+    description=(
+        "Runs Phase 1 of the Streamlit workflow:\n\n"
+        "1. Load manuscript from fake data\n"
+        "2. Call Strands COI service via A2A (`POST /tasks/send`)\n"
+        "3. Strands callbacks to LangGraph for each editor's history\n"
+        "4. Return manuscript info + full editor profiles + COI result\n\n"
+        "Use the returned `coi_result` in the `/finalize` call."
+    ),
+    tags=["Streamlit UI"],
+)
+async def check_coi_only(request: COICheckOnlyRequest):
+    ms_number = request.manuscript_number
+    try:
+        ms = fake_data.get_manuscript(ms_number)
+    except ValueError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=str(e))
+
+    authors = ms["authors"]
+    editors = [e["name"] for e in fake_data.EDITORS.values()]
+
+    # A2A call to Strands COI
+    coi_message = (
+        f"Check conflicts of interest.\n"
+        f"Manuscript authors: {json.dumps(authors)}\n"
+        f"Candidate editors: {json.dumps(editors)}\n"
+        f"For each editor, fetch their publication history and identify any co-authorship "
+        f"or recent collaboration with the manuscript authors."
+    )
+    coi_payload = {
+        "id": f"coi-{ms_number}",
+        "message": {"role": "user", "parts": [{"text": coi_message}]},
+    }
+
+    logger.info("[check-coi] → A2A POST to Strands COI")
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            coi_resp = await client.post(f"{STRANDS_URL}/tasks/send", json=coi_payload)
+            coi_resp.raise_for_status()
+    except httpx.ConnectError:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail=f"Strands COI service not reachable at {STRANDS_URL}",
+        )
+
+    coi_text = coi_resp.json()["artifacts"][0]["parts"][0]["text"]
+    try:
+        import re
+        clean = re.sub(r"<thinking>.*?</thinking>", "", coi_text, flags=re.DOTALL)
+        match = re.search(r"(\{.*\})", clean, re.DOTALL)
+        coi_result = json.loads(match.group(1)) if match else json.loads(coi_text)
+    except (json.JSONDecodeError, AttributeError):
+        coi_result = {"approved": [], "flagged": []}
+
+    logger.info("[check-coi] ← COI result: %s", coi_result)
+
+    # Build rich editor profiles
+    all_editor_names = (
+        [a if isinstance(a, str) else a.get("editor") for a in coi_result.get("approved", [])]
+        + [f if isinstance(f, str) else f.get("editor") for f in coi_result.get("flagged", [])]
+    )
+    editor_profiles = {name: _editor_details(name, coi_result) for name in all_editor_names}
+
+    return {
+        "manuscript": {
+            "number": ms_number,
+            "title": ms["title"],
+            "authors": authors,
+            "abstract": ms.get("abstract", ""),
+            "topics": ms.get("topics", []),
+            "journal": ms.get("journal", ""),
+        },
+        "coi_result": coi_result,
+        "editor_profiles": editor_profiles,
+        "a2a_trace": [
+            f"LangGraph → Strands COI:  POST {STRANDS_URL}/tasks/send",
+            *[
+                f"  Strands → LangGraph:  POST :8000/tasks/send  [history for {name}]"
+                for name in all_editor_names
+            ],
+            "  Strands → LangGraph:  COI result returned",
+        ],
+    }
+
+
+@app.post(
+    "/finalize",
+    summary="Phase 2 — Apply human decision and return final assignment",
+    description=(
+        "Runs Phase 2 of the Streamlit workflow:\n\n"
+        "Takes the COI result from `/check-coi` and the human's HITL decision, "
+        "then returns the final editor assignment with full reasoning.\n\n"
+        "**human_decision values:**\n"
+        "- `'1'` — assign first approved editor\n"
+        "- `'2'` — assign second approved editor\n"
+        "- `'3'` — override (assign flagged editor anyway)\n"
+        "- `'4'` — escalate to editor-in-chief"
+    ),
+    tags=["Streamlit UI"],
+)
+async def finalize_assignment(request: FinalizeRequest):
+    coi_result = request.coi_result
+    approved = [a if isinstance(a, str) else a.get("editor") for a in coi_result.get("approved", [])]
+    flagged_raw = coi_result.get("flagged", [])
+    flagged = [f if isinstance(f, str) else f.get("editor") for f in flagged_raw]
+    decision = request.human_decision
+
+    if decision == "1":
+        selected_name = approved[0] if approved else "N/A"
+        decision_label = "Approved — AI recommendation accepted"
+    elif decision == "2":
+        selected_name = approved[1] if len(approved) > 1 else (approved[0] if approved else "N/A")
+        decision_label = "Approved — runner-up selected"
+    elif decision == "3":
+        selected_name = flagged[0] if flagged else "N/A"
+        decision_label = "Override — flagged editor assigned by human"
+    else:
+        selected_name = "ESCALATED"
+        decision_label = "Escalated — referred to editor-in-chief"
+
+    selected = _editor_details(selected_name, coi_result) if selected_name != "ESCALATED" else {
+        "name": "ESCALATED", "orcid": "N/A", "person_id": "N/A",
+        "expertise": [], "reasoning": "Referred to editor-in-chief for manual assignment.",
+    }
+    runner_up_name = next((a for a in approved if a != selected_name), None)
+    runner_up = _editor_details(runner_up_name, coi_result) if runner_up_name else None
+
+    return {
+        "selected_editor": selected,
+        "runner_up": runner_up,
+        "decision_label": decision_label,
+        "human_decision": decision,
+        "coi_summary": {
+            "approved_count": len(approved),
+            "flagged_count": len(flagged),
+            "flagged_editors": flagged_raw,
+        },
+    }
+
+
 # ─── Health check ────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["Health"])
