@@ -54,6 +54,13 @@ from a2a.types import (
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import fake_data  # noqa: E402
 
+from langgraph_service.scoring import (
+    compute_editor_score,
+    decide_hitl_mode,
+    ScoreBreakdown,
+    HITLDecision,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="[LangGraph:8000] %(message)s",
@@ -305,6 +312,19 @@ def _editor_details(editor_name: str, coi_result: dict) -> dict:
         None,
     )
 
+    # ── Compute composite score ─────────────────────────────────────────────
+    is_flagged = editor_name in flagged_names
+    score = compute_editor_score(
+        editor_expertise=editor.get("expertise", []),
+        manuscript_topics=list(ms_topics),
+        current_load=editor.get("current_load", 0),
+        max_load=editor.get("max_load", 5),
+        is_coi_flagged=is_flagged,
+        acceptance_rate=editor.get("acceptance_rate", 0.75),
+        avg_revision_rounds=editor.get("avg_revision_rounds", 2.0),
+        avg_turnaround_days=editor.get("avg_turnaround_days", 18.0),
+    )
+
     return {
         "name": editor_name,
         "orcid": editor.get("id", "N/A"),
@@ -312,14 +332,19 @@ def _editor_details(editor_name: str, coi_result: dict) -> dict:
         "expertise": editor.get("expertise", []),
         "current_load": editor.get("current_load", 0),
         "max_load": editor.get("max_load", 5),
+        "acceptance_rate": editor.get("acceptance_rate", 0.75),
+        "avg_revision_rounds": editor.get("avg_revision_rounds", 2.0),
+        "avg_turnaround_days": editor.get("avg_turnaround_days", 18.0),
         "topic_match": sorted(matched),
         "topic_match_score": len(matched),
-        "coi_status": "flagged" if editor_name in flagged_names else "approved",
+        "coi_status": "flagged" if is_flagged else "approved",
         "coi_reason": (
             flag_entry.get("reason", "Conflict detected")
             if isinstance(flag_entry, dict)
             else str(flag_entry) if flag_entry else None
         ),
+        "score": score.to_dict(),
+        "composite_score": round(score.composite, 1),
         "reasoning": _build_reasoning(editor_name, editor, matched, flagged_names),
         "reasoning_points": _build_reasoning_points(editor_name, editor, matched, flagged_names),
     }
@@ -489,10 +514,25 @@ async def check_coi_only(request: Request):
     )
     editor_profiles = {name: _editor_details(name, coi_result) for name in all_editor_names}
 
+    # ── Score-based HITL decision ─────────────────────────────────────────
+    any_flagged = len(coi_result.get("flagged", [])) > 0
+    ranked = sorted(
+        [
+            (name, ScoreBreakdown(**profile["score"]))
+            for name, profile in editor_profiles.items()
+            if profile["coi_status"] != "flagged"  # rank only non-flagged editors
+        ],
+        key=lambda x: x[1].composite,
+        reverse=True,
+    )
+    hitl_decision = decide_hitl_mode(ranked, any_coi_flagged=any_flagged)
+
     logger.info(
-        "[check-coi] Complete — approved: %s | flagged: %s | waiting for human decision…",
+        "[check-coi] Complete — approved: %s | flagged: %s | HITL mode: %s (gap: %.0f) | waiting for human decision…",
         [a if isinstance(a, str) else a.get("editor") for a in coi_result.get("approved", [])],
         [f if isinstance(f, str) else f.get("editor") for f in coi_result.get("flagged", [])],
+        hitl_decision.mode,
+        hitl_decision.gap,
     )
 
     return JSONResponse({
@@ -503,11 +543,13 @@ async def check_coi_only(request: Request):
         },
         "coi_result": coi_result,
         "editor_profiles": editor_profiles,
+        "hitl_decision": hitl_decision.to_dict(),
         "a2a_trace": [
             f"LangGraph → Strands COI:  POST {STRANDS_URL}/tasks/send",
             *[f"  Strands → LangGraph:  POST :8000/tasks/send  [history for {name}]"
               for name in all_editor_names],
             "  Strands → LangGraph:  COI result returned",
+            f"Score-based HITL: mode={hitl_decision.mode}, gap={hitl_decision.gap:.0f}pts",
         ],
     })
 

@@ -25,6 +25,9 @@ EDITORS = {
         "expertise": ["oncology", "immunotherapy", "clinical trials"],
         "current_load": 3,
         "max_load": 5,
+        "acceptance_rate": 0.82,
+        "avg_revision_rounds": 1.8,
+        "avg_turnaround_days": 16,
     },
     "dr-lee": {
         "id": "0000-0002-2345-6789",
@@ -33,6 +36,9 @@ EDITORS = {
         "expertise": ["immunology", "cancer biology", "molecular biology"],
         "current_load": 2,
         "max_load": 5,
+        "acceptance_rate": 0.74,
+        "avg_revision_rounds": 2.1,
+        "avg_turnaround_days": 19,
     },
     "dr-smith": {
         "id": "0000-0003-3456-7890",
@@ -41,6 +47,9 @@ EDITORS = {
         "expertise": ["deep learning", "bioinformatics", "genomics"],
         "current_load": 1,
         "max_load": 5,
+        "acceptance_rate": 0.88,
+        "avg_revision_rounds": 1.5,
+        "avg_turnaround_days": 14,
     },
 }
 

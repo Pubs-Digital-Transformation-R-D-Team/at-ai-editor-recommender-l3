@@ -88,13 +88,22 @@ div[data-testid="stCheckbox"] label span {
 .opt-card.flagged { border-color: #C0392B; background: #FFF5F3; }
 .load-bar { background: #E8DFD4; border-radius: 4px; height: 7px; margin: 3px 0; }
 .load-fill { border-radius: 4px; height: 7px; }
+.score-bar { background: #E8DFD4; border-radius: 4px; height: 10px; margin: 2px 0; }
+.score-fill { border-radius: 4px; height: 10px; }
+.score-label { font-size: 0.76rem; color: #555; display: flex; justify-content: space-between; }
+.score-big { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.hitl-banner { border-radius: 8px; padding: 0.6rem 1rem; margin-bottom: 0.8rem; font-size: 0.88rem; }
+.hitl-auto { background: #E6F9F0; border: 1px solid #00A65A; color: #1B7A3E; }
+.hitl-soft { background: #E3F0FF; border: 1px solid #00479D; color: #00479D; }
+.hitl-full { background: #FEF3E6; border: 1px solid #E86A10; color: #7D4011; }
 </style>
 """, unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────────
 
 DEFAULTS = dict(stage="idle", manuscript=None, coi_result=None, editor_profiles={},
-                a2a_trace=[], human_decision=None, final_result=None, error_msg=None)
+                a2a_trace=[], human_decision=None, final_result=None, error_msg=None,
+                hitl_decision=None)
 
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -133,6 +142,39 @@ def _bar(cur, mx):
     return (f'<div class="load-bar"><div class="load-fill" style="width:{pct}%;background:{c}"></div></div>'
             f'<small style="color:#555">{cur}/{mx} manuscripts</small>')
 
+def _score_bar(label, value, max_val=100):
+    """Render a single score dimension bar."""
+    pct = min(int(value / max_val * 100), 100)
+    c = "#00A65A" if pct >= 70 else "#E86A10" if pct >= 40 else "#C0392B"
+    return (f'<div class="score-label"><span>{label}</span><span>{value:.0f}</span></div>'
+            f'<div class="score-bar"><div class="score-fill" style="width:{pct}%;background:{c}"></div></div>')
+
+def _score_block(profile):
+    """Render the full score breakdown for an editor profile."""
+    score = profile.get("score", {})
+    composite = profile.get("composite_score", 0)
+    c = "#00A65A" if composite >= 70 else "#E86A10" if composite >= 40 else "#C0392B"
+    html = f'<div style="margin-top:0.4rem;padding:0.5rem;background:#FAFAF5;border-radius:6px;border:1px solid #E8DFD4">'
+    html += f'<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem"><span class="score-big" style="color:{c}">{composite:.0f}</span><span style="font-size:0.8rem;color:#777">/100 composite</span></div>'
+    for dim_label, dim_key in [("Topic Match", "topic_match"), ("Capacity", "capacity"),
+                                ("COI Clear", "coi_clear"), ("Track Record", "track_record"),
+                                ("Turnaround", "turnaround")]:
+        html += _score_bar(dim_label, score.get(dim_key, 0))
+    html += '</div>'
+    return html
+
+def _hitl_banner(hitl_decision):
+    """Render the HITL mode banner."""
+    if not hitl_decision:
+        return ""
+    mode = hitl_decision.get("mode", "full_hitl")
+    reason = hitl_decision.get("reason", "")
+    icons = {"auto_assign": "🟢", "soft_review": "🔵", "full_hitl": "🟠"}
+    labels = {"auto_assign": "Auto-Assign", "soft_review": "Soft Review", "full_hitl": "Full HITL"}
+    css = {"auto_assign": "hitl-auto", "soft_review": "hitl-soft", "full_hitl": "hitl-full"}
+    return (f'<div class="hitl-banner {css.get(mode, "hitl-full")}">' 
+            f'{icons.get(mode, "🟠")} <strong>{labels.get(mode, "Full HITL")}</strong> — {reason}</div>')
+
 def _editor_card(p, label="", highlight=False):
     flagged = p.get("coi_status") == "flagged"
     cls = "card-blue" if highlight else ("card-red" if flagged else "card-green")
@@ -146,13 +188,14 @@ def _editor_card(p, label="", highlight=False):
     pts = p.get("reasoning_points", [])
     pts_h = "".join(f"<li style='margin:2px 0;font-size:0.84rem'>{x}</li>" for x in pts)
     pts_block = f"<ul style='margin:0.3rem 0 0;padding-left:1.1rem'>{pts_h}</ul>" if pts else ""
+    score_html = _score_block(p) if p.get("score") else ""
     return (
         f'<div class="card {cls}">'
         f'<div style="margin-bottom:0.4rem"><strong>{p.get("name","?")}</strong> {tag} {lbl}</div>'
         f'<div style="margin-bottom:0.3rem">{_b(p.get("expertise",[]))}</div>'
         f'<div style="margin-bottom:0.3rem">{match_h}</div>'
         f'{_bar(p.get("current_load",0), p.get("max_load",5))}'
-        f'{coi_r}{pts_block}'
+        f'{coi_r}{pts_block}{score_html}'
         f'</div>'
     )
 
@@ -234,6 +277,7 @@ def page_coi_running():
             st.session_state.coi_result = res["coi_result"]
             st.session_state.editor_profiles = res["editor_profiles"]
             st.session_state.a2a_trace = res.get("a2a_trace", [])
+            st.session_state.hitl_decision = res.get("hitl_decision")
             status.update(label="✅ COI check complete", state="complete")
         except Exception as e:
             status.update(label="❌ Error", state="error")
@@ -254,8 +298,19 @@ def page_hitl():
 
     coi = st.session_state.coi_result
     profiles = st.session_state.editor_profiles
+    hitl_dec = st.session_state.hitl_decision
     approved = [a if isinstance(a, str) else a.get("editor") for a in coi.get("approved", [])]
     flagged = [f if isinstance(f, str) else f.get("editor") for f in coi.get("flagged", [])]
+
+    # ── Score-Based HITL Banner ───────────────────────────────────────────────
+    st.markdown(_hitl_banner(hitl_dec), unsafe_allow_html=True)
+
+    # Sort approved editors by composite score (highest first)
+    approved_sorted = sorted(
+        approved,
+        key=lambda n: profiles.get(n, {}).get("composite_score", 0),
+        reverse=True,
+    )
 
     # ── Flagged ───────────────────────────────────────────────────────────────
     st.markdown("#### ⚠️ Flagged Editor")
@@ -264,9 +319,9 @@ def page_hitl():
         st.markdown(_editor_card(p), unsafe_allow_html=True)
 
     # ── Approved ──────────────────────────────────────────────────────────────
-    st.markdown("#### ✅ Approved Alternatives")
-    cols = st.columns(max(len(approved), 1))
-    for i, name in enumerate(approved):
+    st.markdown("#### ✅ Approved Alternatives (ranked by score)")
+    cols = st.columns(max(len(approved_sorted), 1))
+    for i, name in enumerate(approved_sorted):
         p = profiles.get(name, {"name": name, "coi_status": "approved"})
         with cols[i]:
             st.markdown(_editor_card(p, label="ai_pick" if i == 0 else "runner_up"), unsafe_allow_html=True)
@@ -279,24 +334,26 @@ def page_hitl():
     option_keys = []
     radio_labels = []
 
-    for i, name in enumerate(approved):
+    for i, name in enumerate(approved_sorted):
         p = profiles.get(name, {"name": name})
         pts = p.get("reasoning_points", [])
-        score = p.get("topic_match_score")
+        composite = p.get("composite_score", 0)
         reasoning = p.get("reasoning", "")
         tag = "⭐ AI Pick" if i == 0 else "🥈 Runner-up"
         css = "pick" if i == 0 else "runner"
-        score_txt = f" · Score: {score}%" if score else ""
+        score_c = "#00A65A" if composite >= 70 else "#E86A10" if composite >= 40 else "#C0392B"
         pts_html = "".join(f"<li>{x}</li>" for x in pts)
         st.markdown(
             f'<div class="opt-card {css}">'
             f'<b>Option {i+1}:</b> Assign <b>{name}</b> '
-            f'<span class="badge badge-blue">{tag}</span>{score_txt}'
+            f'<span class="badge badge-blue">{tag}</span>'
+            f' <span style="font-weight:700;color:{score_c};font-size:1.1rem">{composite:.0f}</span>'
+            f'<span style="font-size:0.78rem;color:#777">/100</span>'
             f'<ul style="margin:0.3rem 0 0;padding-left:1.1rem;font-size:0.88rem">{pts_html}</ul>'
             f'<div style="font-size:0.82rem;color:#555;margin-top:0.2rem"><em>{reasoning}</em></div>'
             f'</div>', unsafe_allow_html=True)
         option_keys.append(str(i + 1))
-        radio_labels.append(f"Option {i+1}: Assign {name}")
+        radio_labels.append(f"Option {i+1}: Assign {name} (score: {composite:.0f})")
 
     if flagged:
         pf = profiles.get(flagged[0], {"name": flagged[0]})
@@ -386,6 +443,15 @@ def page_done():
         coi_sum = final.get("coi_summary", {})
         if coi_sum:
             st.markdown(f"**Approved:** {coi_sum.get('approved_count',0)} · **Flagged:** {coi_sum.get('flagged_count',0)}")
+        # Show composite score for selected editor
+        if sel.get("composite_score"):
+            c = "#00A65A" if sel["composite_score"] >= 70 else "#E86A10" if sel["composite_score"] >= 40 else "#C0392B"
+            st.markdown(f'**Composite Score:** <span style="color:{c};font-weight:700;font-size:1.3rem">{sel["composite_score"]:.0f}</span>/100', unsafe_allow_html=True)
+        # Show HITL decision info
+        hitl_dec = st.session_state.hitl_decision
+        if hitl_dec:
+            st.markdown(f"**HITL Mode:** {hitl_dec.get('mode', '—').replace('_', ' ').title()}")
+            st.markdown(f"**Score Gap:** {hitl_dec.get('gap', 0):.0f} pts")
 
         with st.expander("🔗 A2A Trace"):
             for line in (st.session_state.a2a_trace or []):
