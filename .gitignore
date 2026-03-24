@@ -43,3 +43,6 @@ htmlcov/
 # AWS credentials (never commit)
 *.pem
 irsa_token.txt
+
+# Local uv config (OneDrive workaround)
+uv.toml

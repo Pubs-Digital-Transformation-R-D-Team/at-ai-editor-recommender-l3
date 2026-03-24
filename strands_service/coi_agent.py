@@ -168,7 +168,7 @@ def _run_coi_check_mock(message: str) -> str:
     Parses authors and editors from the message, fetches editor history via
     the tool, and flags any editor whose co-author list overlaps with authors.
 
-    Expected message format (from react_agent._call_strands_coi):
+    Expected message format (from callback_server check_coi_only):
         Check conflicts of interest.
         Manuscript authors: ["Name A", "Name B"]
         Candidate editors: ["Dr. X", "Dr. Y"]

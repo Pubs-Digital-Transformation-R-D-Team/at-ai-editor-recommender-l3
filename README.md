@@ -53,13 +53,18 @@ PYTHONPATH=. MOCK_COI=true python strands_service/server.py
 # Terminal 2 — LangGraph service
 PYTHONPATH=. MOCK_REACT=true python langgraph_service/callback_server.py
 
-# Terminal 3 — Run full workflow via CLI
-PYTHONPATH=. MOCK_COI=true MOCK_REACT=true python run_poc.py
+# Terminal 3 — Streamlit UI
+streamlit run streamlit_app.py --server.port 8501
 ```
 
-Swagger UIs:
-- http://localhost:8000/docs — LangGraph (orchestrator + `/run-workflow`)
-- http://localhost:8001/docs — Strands COI agent
+Or use the one-click launcher (PowerShell):
+```powershell
+.\start.ps1
+```
+
+A2A Agent Cards:
+- http://localhost:8000/.well-known/agent-card.json — LangGraph
+- http://localhost:8001/.well-known/agent-card.json — Strands COI
 
 ---
 
@@ -117,15 +122,23 @@ Authors: John Smith, Jane Doe, Robert Chen
 {"manuscript_number": "MS-999", "auto_approve": true}
 ```
 
-**`POST /tasks/send`** on port 8000 — A2A callback (editor history lookup):
+**A2A JSON-RPC `message/send`** on port 8000 — native SDK protocol (editor history):
 ```json
 {
+  "jsonrpc": "2.0",
   "id": "test-001",
-  "message": {"role": "user", "parts": [{"text": "Get editor history for: Dr. Emily Jones"}]}
+  "method": "message/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [{"kind": "text", "text": "Get editor history for: Dr. Emily Jones"}],
+      "messageId": "msg-test-001"
+    }
+  }
 }
 ```
 
-**`POST /tasks/send`** on port 8001 — COI check directly to Strands:
+**`POST /tasks/send`** on port 8001 — legacy adapter (COI check):
 ```json
 {
   "id": "coi-MS-999",
@@ -162,17 +175,16 @@ In-cluster DNS:
 
 ```
 ├── fake_data.py                    # Test data (MS-999, 3 editors)
-├── run_poc.py                      # CLI entry point with HITL prompt
+├── start.ps1                       # One-click launcher (PowerShell)
+├── streamlit_app.py                # Streamlit HITL UI
 ├── langgraph_service/
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── callback_server.py          # FastAPI :8000 — A2A + /run-workflow
-│   ├── graph.py                    # LangGraph state machine
-│   └── react_agent.py              # Nova Premier ReAct loop
+│   └── callback_server.py          # Starlette :8000 — A2A SDK + REST endpoints
 ├── strands_service/
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── server.py                   # FastAPI :8001 — COI A2A endpoint
+│   ├── server.py                   # Starlette :8001 — A2A SDK COI endpoint
 │   └── coi_agent.py                # Strands agent with history tool
 ├── k8s/dev/
 │   ├── er-bedrock-sa.yaml          # IRSA ServiceAccount
