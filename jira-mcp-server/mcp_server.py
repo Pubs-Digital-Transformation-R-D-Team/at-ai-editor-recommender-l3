@@ -35,6 +35,17 @@ from jira_client import (
     assign_issue as _assign_issue,
     my_open_issues as _my_open_issues,
     get_board_sprints as _get_board_sprints,
+    get_sprint_issues as _get_sprint_issues,
+    get_transitions as _get_transitions,
+    link_issues as _link_issues,
+    create_subtask as _create_subtask,
+    add_labels as _add_labels,
+    remove_labels as _remove_labels,
+    log_work as _log_work,
+    add_watcher as _add_watcher,
+    get_issue_changelog as _get_issue_changelog,
+    search_users as _search_users,
+    delete_issue as _delete_issue,
 )
 
 
@@ -314,6 +325,119 @@ def run_fastmcp():
         """
         return _get_board_sprints(board_id=board_id)
 
+    @mcp.tool()
+    def get_sprint_issues(sprint_id: str, max_results: int = 30) -> str:
+        """Get all issues in a specific sprint.
+        Args:
+            sprint_id: The sprint ID (get it from get_board_sprints)
+            max_results: Maximum issues to return (default 30)
+        """
+        return _get_sprint_issues(sprint_id=sprint_id, max_results=max_results)
+
+    @mcp.tool()
+    def get_transitions(issue_key: str) -> str:
+        """Get all available status transitions for an issue.
+        Use this to find valid status names before calling transition_issue.
+        Args:
+            issue_key: Issue key (e.g. "ENG-123")
+        """
+        return _get_transitions(issue_key=issue_key)
+
+    @mcp.tool()
+    def link_issues(inward_key: str, outward_key: str, link_type: str = "Relates") -> str:
+        """Link two Jira issues together.
+        Args:
+            inward_key: Source issue (e.g. "ENG-100")
+            outward_key: Target issue (e.g. "ENG-200")
+            link_type: Relates (default), Blocks, Cloners, Duplicate
+        """
+        return _link_issues(inward_key=inward_key, outward_key=outward_key, link_type=link_type)
+
+    @mcp.tool()
+    def create_subtask(
+        parent_key: str,
+        summary: str,
+        description: str = "",
+        priority: str = "Medium",
+        assignee_email: str = "",
+    ) -> str:
+        """Create a subtask under an existing issue.
+        Args:
+            parent_key: Parent issue key (e.g. "ENG-123")
+            summary: Subtask title
+            description: Subtask description (plain text)
+            priority: Highest, High, Medium, Low, Lowest
+            assignee_email: Assignee email (leave empty for unassigned)
+        """
+        return _create_subtask(
+            parent_key=parent_key, summary=summary, description=description,
+            priority=priority, assignee_email=assignee_email,
+        )
+
+    @mcp.tool()
+    def add_labels(issue_key: str, labels: str) -> str:
+        """Add labels to an issue without removing existing ones.
+        Args:
+            issue_key: Issue key (e.g. "ENG-123")
+            labels: Comma-separated labels (e.g. "ai,poc,urgent")
+        """
+        return _add_labels(issue_key=issue_key, labels=labels)
+
+    @mcp.tool()
+    def remove_labels(issue_key: str, labels: str) -> str:
+        """Remove specific labels from an issue.
+        Args:
+            issue_key: Issue key (e.g. "ENG-123")
+            labels: Comma-separated labels to remove (e.g. "old-label,deprecated")
+        """
+        return _remove_labels(issue_key=issue_key, labels=labels)
+
+    @mcp.tool()
+    def log_work(issue_key: str, time_spent: str, comment: str = "") -> str:
+        """Log time spent on an issue (time tracking).
+        Args:
+            issue_key: Issue key (e.g. "ENG-123")
+            time_spent: Time in Jira format (e.g. "2h", "1d", "30m", "1h 30m")
+            comment: Optional description of work done
+        """
+        return _log_work(issue_key=issue_key, time_spent=time_spent, comment=comment)
+
+    @mcp.tool()
+    def add_watcher(issue_key: str, watcher_email: str) -> str:
+        """Add a watcher to an issue so they receive notifications.
+        Args:
+            issue_key: Issue key (e.g. "ENG-123")
+            watcher_email: Email of the person to add as watcher
+        """
+        return _add_watcher(issue_key=issue_key, watcher_email=watcher_email)
+
+    @mcp.tool()
+    def get_issue_changelog(issue_key: str, max_results: int = 10) -> str:
+        """Get the change history of an issue — who changed what and when.
+        Args:
+            issue_key: Issue key (e.g. "ENG-123")
+            max_results: Maximum history entries (default 10)
+        """
+        return _get_issue_changelog(issue_key=issue_key, max_results=max_results)
+
+    @mcp.tool()
+    def search_users(query: str, max_results: int = 10) -> str:
+        """Search for Jira users by name or email.
+        Args:
+            query: Name or email to search (e.g. "singh" or "ssingh@acs-i.org")
+            max_results: Maximum results (default 10)
+        """
+        return _search_users(query=query, max_results=max_results)
+
+    @mcp.tool()
+    def delete_issue(issue_key: str, delete_subtasks: bool = False) -> str:
+        """Delete a Jira issue. WARNING: cannot be undone.
+        Args:
+            issue_key: Issue key (e.g. "ENG-123")
+            delete_subtasks: If true, also deletes all subtasks
+        """
+        return _delete_issue(issue_key=issue_key, delete_subtasks=delete_subtasks)
+
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     if transport == "sse":
         port = int(os.getenv("MCP_PORT", "7861"))
@@ -341,5 +465,7 @@ if __name__ == "__main__":
     else:
         print("Starting Jira Gradio MCP server...")
         run_gradio_mcp()
+
+
 
 

@@ -464,6 +464,328 @@ def get_board_sprints(board_id: str) -> str:
     return json.dumps(sprints, indent=2)
 
 
+# ─── Get sprint issues ───────────────────────────────────────────────────────
+
+def get_sprint_issues(sprint_id: str, max_results: int = 30) -> str:
+    """
+    Get all issues in a specific sprint.
+
+    Args:
+        sprint_id: The sprint ID (number). Get it from get_board_sprints.
+        max_results: Maximum number of issues to return (default 30).
+    """
+    r = httpx.get(
+        f"{JIRA_URL}/rest/agile/1.0/sprint/{sprint_id}/issue",
+        headers=_headers(),
+        params={"maxResults": max_results, "fields": "summary,status,priority,assignee,issuetype,labels"},
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    data = r.json()
+    issues = []
+    for i in data.get("issues", []):
+        f = i["fields"]
+        issues.append({
+            "key": i["key"],
+            "summary": f.get("summary", ""),
+            "status": f.get("status", {}).get("name", ""),
+            "priority": f.get("priority", {}).get("name", ""),
+            "type": f.get("issuetype", {}).get("name", ""),
+            "assignee": (f.get("assignee") or {}).get("displayName", "Unassigned"),
+            "labels": f.get("labels", []),
+        })
+    return json.dumps({
+        "sprint_id": sprint_id,
+        "total": data.get("total", 0),
+        "showing": len(issues),
+        "issues": issues,
+    }, indent=2)
+
+
+# ─── Get available transitions ────────────────────────────────────────────────
+
+def get_transitions(issue_key: str) -> str:
+    """
+    Get all available status transitions for an issue.
+    Use this to find valid status names before calling transition_issue.
+
+    Args:
+        issue_key: Issue key (e.g. "ENG-123")
+    """
+    t_data = _get(f"/issue/{issue_key}/transitions")
+    transitions = []
+    for t in t_data.get("transitions", []):
+        transitions.append({
+            "id": t["id"],
+            "name": t["name"],
+            "to_status": t.get("to", {}).get("name", ""),
+        })
+    return json.dumps({
+        "key": issue_key,
+        "available_transitions": transitions,
+    }, indent=2)
+
+
+# ─── Link issues ─────────────────────────────────────────────────────────────
+
+def link_issues(inward_key: str, outward_key: str, link_type: str = "Relates") -> str:
+    """
+    Create a link between two Jira issues.
+
+    Args:
+        inward_key: The issue that is the source (e.g. "ENG-100")
+        outward_key: The issue being linked to (e.g. "ENG-200")
+        link_type: Type of link. Common types:
+            - "Relates" (default)
+            - "Blocks" (inward blocks outward)
+            - "Cloners" (inward is cloned by outward)
+            - "Duplicate" (inward duplicates outward)
+    """
+    body = {
+        "type": {"name": link_type},
+        "inwardIssue": {"key": inward_key},
+        "outwardIssue": {"key": outward_key},
+    }
+    r = httpx.post(
+        f"{_BASE}/issueLink",
+        headers=_headers(),
+        json=body,
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    return json.dumps({
+        "linked": True,
+        "inward": inward_key,
+        "outward": outward_key,
+        "type": link_type,
+    }, indent=2)
+
+
+# ─── Create subtask ──────────────────────────────────────────────────────────
+
+def create_subtask(
+    parent_key: str,
+    summary: str,
+    description: str = "",
+    priority: str = "Medium",
+    assignee_email: str = "",
+) -> str:
+    """
+    Create a subtask under an existing issue.
+
+    Args:
+        parent_key: Parent issue key (e.g. "ENG-123")
+        summary: Subtask title
+        description: Subtask description (plain text)
+        priority: Highest, High, Medium, Low, Lowest
+        assignee_email: Assignee email (leave empty for unassigned)
+    """
+    # Get parent's project key
+    parent = _get(f"/issue/{parent_key}", params={"fields": "project"})
+    project_key = parent["fields"]["project"]["key"]
+
+    body: dict = {
+        "fields": {
+            "project": {"key": project_key},
+            "parent": {"key": parent_key},
+            "summary": summary,
+            "issuetype": {"name": "Sub-task"},
+            "priority": {"name": priority},
+        }
+    }
+    if description:
+        body["fields"]["description"] = _text_to_adf(description)
+    if assignee_email:
+        users = _get("/user/search", params={"query": assignee_email, "maxResults": 1})
+        if users:
+            body["fields"]["assignee"] = {"accountId": users[0]["accountId"]}
+
+    result = _post("/issue", body)
+    return json.dumps({
+        "created": True,
+        "key": result["key"],
+        "parent": parent_key,
+        "url": f"{JIRA_URL}/browse/{result['key']}",
+    }, indent=2)
+
+
+# ─── Add / remove labels ─────────────────────────────────────────────────────
+
+def add_labels(issue_key: str, labels: str) -> str:
+    """
+    Add labels to an issue without removing existing ones.
+
+    Args:
+        issue_key: Issue key (e.g. "ENG-123")
+        labels: Comma-separated labels to add (e.g. "ai,poc,urgent")
+    """
+    label_list = [l.strip() for l in labels.split(",") if l.strip()]
+    body = {"update": {"labels": [{"add": l} for l in label_list]}}
+    _put(f"/issue/{issue_key}", body)
+    return json.dumps({
+        "updated": True,
+        "key": issue_key,
+        "labels_added": label_list,
+        "url": f"{JIRA_URL}/browse/{issue_key}",
+    }, indent=2)
+
+
+def remove_labels(issue_key: str, labels: str) -> str:
+    """
+    Remove specific labels from an issue.
+
+    Args:
+        issue_key: Issue key (e.g. "ENG-123")
+        labels: Comma-separated labels to remove (e.g. "old-label,deprecated")
+    """
+    label_list = [l.strip() for l in labels.split(",") if l.strip()]
+    body = {"update": {"labels": [{"remove": l} for l in label_list]}}
+    _put(f"/issue/{issue_key}", body)
+    return json.dumps({
+        "updated": True,
+        "key": issue_key,
+        "labels_removed": label_list,
+        "url": f"{JIRA_URL}/browse/{issue_key}",
+    }, indent=2)
+
+
+# ─── Log work (time tracking) ────────────────────────────────────────────────
+
+def log_work(issue_key: str, time_spent: str, comment: str = "") -> str:
+    """
+    Log time spent on an issue.
+
+    Args:
+        issue_key: Issue key (e.g. "ENG-123")
+        time_spent: Time in Jira format (e.g. "2h", "1d", "30m", "1h 30m")
+        comment: Optional comment describing the work done
+    """
+    body: dict = {"timeSpent": time_spent}
+    if comment:
+        body["comment"] = _text_to_adf(comment)
+
+    r = httpx.post(
+        f"{_BASE}/issue/{issue_key}/worklog",
+        headers=_headers(),
+        json=body,
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    data = r.json()
+    return json.dumps({
+        "logged": True,
+        "key": issue_key,
+        "time_spent": time_spent,
+        "worklog_id": data.get("id", ""),
+        "url": f"{JIRA_URL}/browse/{issue_key}",
+    }, indent=2)
+
+
+# ─── Add watcher ─────────────────────────────────────────────────────────────
+
+def add_watcher(issue_key: str, watcher_email: str) -> str:
+    """
+    Add a watcher to an issue so they get notifications.
+
+    Args:
+        issue_key: Issue key (e.g. "ENG-123")
+        watcher_email: Email of the person to add as watcher
+    """
+    users = _get("/user/search", params={"query": watcher_email, "maxResults": 1})
+    if not users:
+        return json.dumps({"error": f"No user found for email: {watcher_email}"})
+
+    account_id = users[0]["accountId"]
+    r = httpx.post(
+        f"{_BASE}/issue/{issue_key}/watchers",
+        headers=_headers(),
+        json=account_id,
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    return json.dumps({
+        "added": True,
+        "key": issue_key,
+        "watcher": users[0].get("displayName", watcher_email),
+        "url": f"{JIRA_URL}/browse/{issue_key}",
+    }, indent=2)
+
+
+# ─── Issue changelog (history) ────────────────────────────────────────────────
+
+def get_issue_changelog(issue_key: str, max_results: int = 10) -> str:
+    """
+    Get the change history of an issue (who changed what and when).
+
+    Args:
+        issue_key: Issue key (e.g. "ENG-123")
+        max_results: Maximum number of history entries (default 10)
+    """
+    data = _get(f"/issue/{issue_key}/changelog", params={"maxResults": max_results})
+    entries = []
+    for h in data.get("values", []):
+        for item in h.get("items", []):
+            entries.append({
+                "date": h.get("created", "")[:19],
+                "author": h.get("author", {}).get("displayName", ""),
+                "field": item.get("field", ""),
+                "from": item.get("fromString") or "",
+                "to": item.get("toString") or "",
+            })
+    return json.dumps({
+        "key": issue_key,
+        "total_changes": len(entries),
+        "changes": entries[-max_results:],
+    }, indent=2)
+
+
+# ─── Search users ─────────────────────────────────────────────────────────────
+
+def search_users(query: str, max_results: int = 10) -> str:
+    """
+    Search for Jira users by name or email.
+
+    Args:
+        query: Name or email to search for (e.g. "singh" or "ssingh@acs-i.org")
+        max_results: Maximum number of results (default 10)
+    """
+    users = _get("/user/search", params={"query": query, "maxResults": max_results})
+    results = []
+    for u in users:
+        results.append({
+            "name": u.get("displayName", ""),
+            "email": u.get("emailAddress", ""),
+            "account_id": u.get("accountId", ""),
+            "active": u.get("active", False),
+        })
+    return json.dumps(results, indent=2)
+
+
+# ─── Delete issue ─────────────────────────────────────────────────────────────
+
+def delete_issue(issue_key: str, delete_subtasks: bool = False) -> str:
+    """
+    Delete a Jira issue. Use with caution — this cannot be undone.
+
+    Args:
+        issue_key: Issue key (e.g. "ENG-123")
+        delete_subtasks: If true, also deletes all subtasks. If false and subtasks exist, deletion fails.
+    """
+    params = {"deleteSubtasks": "true" if delete_subtasks else "false"}
+    r = httpx.delete(
+        f"{_BASE}/issue/{issue_key}",
+        headers=_headers(),
+        params=params,
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    return json.dumps({
+        "deleted": True,
+        "key": issue_key,
+        "subtasks_deleted": delete_subtasks,
+    }, indent=2)
+
+
 # ─── ADF helpers ─────────────────────────────────────────────────────────────
 
 def _text_to_adf(text: str) -> dict:
@@ -497,6 +819,8 @@ def _adf_to_text(adf: dict) -> str:
     for child in adf.get("content", []):
         parts.append(_adf_to_text(child))
     return "".join(parts)
+
+
 
 
 
