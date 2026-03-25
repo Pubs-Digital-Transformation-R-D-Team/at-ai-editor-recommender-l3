@@ -29,25 +29,36 @@ Works with Claude Desktop, VS Code Copilot, or any MCP-compatible AI agent.
 ```bash
 cd jira-mcp-server
 
-# Create venv and install deps
-uv venv .venv --python 3.12
+# 1. Create a virtual environment
+python -m venv .venv
 source .venv/bin/activate          # Linux/Mac
-# .\.venv\Scripts\Activate.ps1     # Windows
+# .\.venv\Scripts\Activate.ps1     # Windows (PowerShell)
 
-uv pip install httpx "mcp>=1.0.0" "gradio[mcp]>=5.29.0"
+# 2. Install dependencies (pick one)
+pip install -r requirements.txt    # standard pip
+# uv pip install -r requirements.txt  # or use uv (faster)
 
-# Set your credentials
-cp .env.example .env
-# Edit .env with your JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN
+# 3. Configure credentials
+cp .env.example .env               # Linux/Mac
+# copy .env.example .env            # Windows
+# Then edit .env with your values:
+#   JIRA_URL=https://your-org.atlassian.net
+#   JIRA_EMAIL=you@company.com
+#   JIRA_API_TOKEN=your-token-from-atlassian
 
-# Verify connection
+# 4. Verify connection
 python test_connection.py
 
-# Run with Gradio UI (browser + MCP)
-python mcp_server.py
+# 5. Run the MCP server
+python mcp_server.py               # Gradio UI + MCP (http://localhost:7861)
+python mcp_server.py --fastmcp     # Headless — for Claude Desktop / VS Code Copilot
+```
 
-# OR run headless for Claude Desktop / Copilot
-python mcp_server.py --fastmcp
+### Get your API token
+
+1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
+2. Click **"Create API token"**
+3. Copy the token into your `.env` file
 ```
 
 ---
@@ -156,13 +167,15 @@ sprint in openSprints() AND project = ENG
 
 ```
 jira-mcp-server/
-├── .env.example              # Credential template
+├── .env.example              # Credential template — copy to .env
 ├── .gitignore                # Keeps .env and .venv out of git
-├── uv.toml                   # OneDrive hardlink fix
-├── pyproject.toml             # Dependencies
+├── requirements.txt           # pip install -r requirements.txt
+├── pyproject.toml             # Project metadata + dependencies
 ├── README.md
 ├── jira_client.py            # Jira REST API client (12 functions)
 ├── mcp_server.py             # MCP server (Gradio + FastMCP modes)
 ├── claude_desktop_config.json # Example Claude Desktop config
 └── test_connection.py        # Connectivity smoke test
 ```
+
+

@@ -25,6 +25,19 @@ JIRA_URL = os.getenv("JIRA_URL", "")
 JIRA_EMAIL = os.getenv("JIRA_EMAIL", "")
 JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN", "")
 
+# Validate — give clear setup instructions if credentials are missing
+_missing = [v for v in ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"] if not os.getenv(v)]
+if _missing:
+    import warnings
+    warnings.warn(
+        f"\n\n  Jira MCP Server — missing configuration: {', '.join(_missing)}\n"
+        f"  Setup:\n"
+        f"    1. Copy .env.example to .env\n"
+        f"    2. Fill in your JIRA_URL, JIRA_EMAIL, and JIRA_API_TOKEN\n"
+        f"    3. Get an API token at: https://id.atlassian.com/manage-profile/security/api-tokens\n",
+        stacklevel=2,
+    )
+
 _BASE = f"{JIRA_URL}/rest/api/3"
 
 
@@ -484,6 +497,7 @@ def _adf_to_text(adf: dict) -> str:
     for child in adf.get("content", []):
         parts.append(_adf_to_text(child))
     return "".join(parts)
+
 
 
 
