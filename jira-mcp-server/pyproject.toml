@@ -1,0 +1,16 @@
+[project]
+name = "jira-mcp-server"
+version = "0.1.0"
+description = "Jira MCP Server — expose Jira as tools for Claude Desktop, VS Code Copilot, and any MCP client"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.28.0",
+    "gradio[mcp]>=5.29.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.9"]
+build-backend = "uv_build"
+

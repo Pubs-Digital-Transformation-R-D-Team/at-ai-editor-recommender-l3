@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "jira": {
+      "command": "python",
+      "args": ["mcp_server.py", "--fastmcp"],
+      "cwd": "C:\\path\\to\\jira-mcp-server",
+      "env": {
+        "JIRA_URL": "https://your-org.atlassian.net",
+        "JIRA_EMAIL": "you@company.com",
+        "JIRA_API_TOKEN": "your-api-token-here"
+      }
+    }
+  }
+}
