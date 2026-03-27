@@ -2,7 +2,11 @@
 Streamlit POC UI — L3 Multi-Agent Editor Assignment (Minimalist)
 """
 
-import os, time, httpx, streamlit as st
+import os
+import time
+
+import httpx
+import streamlit as st
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -119,8 +123,10 @@ def reset():
 # ── API helpers ───────────────────────────────────────────────────────────────
 
 def _backend_ok():
-    try: return httpx.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200
-    except: return False
+    try:
+        return httpx.get(f"{BACKEND_URL}/health", timeout=3).status_code == 200
+    except Exception:
+        return False
 
 def _check_coi(ms):
     r = httpx.post(f"{BACKEND_URL}/check-coi", json={"manuscript_number": ms}, timeout=180)

@@ -87,6 +87,7 @@ EDITOR_HISTORY = {
 
 
 def get_manuscript(manuscript_number: str) -> dict:
+    """Retrieve manuscript data by number."""
     ms = MANUSCRIPTS.get(manuscript_number)
     if not ms:
         raise ValueError(f"Manuscript {manuscript_number} not found")

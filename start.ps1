@@ -12,7 +12,7 @@ foreach ($port in @(8000, 8001, 8501)) {
 
 Write-Host "`n Starting LangGraph backend  (port 8000)..." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList "-NoExit", "-Command",
-    "cd '$root'; `$env:PYTHONPATH='.'; `$env:MOCK_COI='true'; `$env:MOCK_REACT='true'; python langgraph_service/callback_server.py"
+    "cd '$root'; `$env:PYTHONPATH='.'; `$env:MOCK_COI='true'; python langgraph_service/callback_server.py"
 
 Start-Sleep -Seconds 2
 

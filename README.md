@@ -63,8 +63,8 @@ Or use the one-click launcher (PowerShell):
 ```
 
 A2A Agent Cards:
-- http://localhost:8000/.well-known/agent-card.json — LangGraph
-- http://localhost:8001/.well-known/agent-card.json — Strands COI
+- http://localhost:8000/.well-known/agent.json — LangGraph
+- http://localhost:8001/.well-known/agent.json — Strands COI
 
 ---
 
@@ -72,7 +72,6 @@ A2A Agent Cards:
 
 | Env var | Effect |
 |---------|--------|
-| `MOCK_REACT=true` | LangGraph bypasses Bedrock, parses manifest directly |
 | `MOCK_COI=true` | Strands bypasses Bedrock, uses rule-based conflict detection |
 | *(unset)* | Both agents use Nova Premier via AWS Bedrock |
 
@@ -93,7 +92,7 @@ kubectl exec -n er at-ai-editor-recommender-deployment-<pod-id> `
   | Out-File -FilePath "$env:TEMP\irsa_token.txt" -Encoding ascii -NoNewline
 
 # Assume Bedrock role
-$env:AWS_ROLE_ARN = "arn:aws:iam::412381768680:role/acs-gtsai-dev-eks-bedrock-clusterrole"
+$env:AWS_ROLE_ARN = "arn:aws:iam::<ACCOUNT_ID>:role/acs-gtsai-dev-eks-bedrock-clusterrole"
 $env:AWS_WEB_IDENTITY_TOKEN_FILE = "$env:TEMP\irsa_token.txt"
 
 # Remove any SSO credentials that would take priority
