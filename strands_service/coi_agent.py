@@ -19,10 +19,13 @@ import json
 import logging
 import os
 import re
+import time
 
 import httpx
 from strands import Agent, tool
 from strands.models import BedrockModel
+
+from resilience import CircuitBreaker, CircuitOpenError, DeadLetterQueue, is_transient
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,14 @@ LANGGRAPH_URL = os.getenv("LANGGRAPH_CALLBACK_URL", "http://localhost:8000")
 # Set MOCK_COI=true to enable. The agent still makes real A2A callbacks to
 # LangGraph for editor history — only LLM reasoning is mocked.
 MOCK_COI = os.getenv("MOCK_COI", "false").lower() in ("true", "1", "yes")
+
+# ── Resilience: circuit breaker + DLQ for LangGraph callback ─────────────────
+langgraph_breaker = CircuitBreaker(
+    service_name="langgraph-callback",
+    failure_threshold=int(os.getenv("CB_FAILURE_THRESHOLD", "3")),
+    recovery_timeout=float(os.getenv("CB_RECOVERY_TIMEOUT", "30")),
+)
+langgraph_dlq = DeadLetterQueue(service_name="langgraph-callback")
 
 SYSTEM_PROMPT = (
     "You are a conflict-of-interest (COI) specialist for scientific peer review. "
@@ -81,31 +92,68 @@ def get_editor_history(editor_name: str) -> str:
 
     logger.info("[Strands COI] → A2A POST %s/tasks/send (editor history callback)", LANGGRAPH_URL)
 
-    try:
-        response = httpx.post(
-            f"{LANGGRAPH_URL}/tasks/send",
-            json=payload,
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        data = response.json()
-        result_text = data["artifacts"][0]["parts"][0]["text"]
-        history = json.loads(result_text)
-        logger.info(
-            "[Strands COI] ← LangGraph returned history for %s — coauthors: %s",
-            editor_name,
-            history.get("coauthors", []),
-        )
-        return json.dumps(history)
+    url = f"{LANGGRAPH_URL}/tasks/send"
+    max_retries = 3
+    backoff_factor = 2.0
+    last_error: Exception | None = None
 
-    except Exception as e:
-        logger.error("[Strands COI] Failed to fetch editor history: %s", e)
+    try:
+        langgraph_breaker.allow_request()
+    except CircuitOpenError as e:
+        logger.error("[Strands COI] Circuit breaker OPEN for LangGraph: %s", e)
         return json.dumps({
             "editor": editor_name,
-            "error": str(e),
+            "error": f"Circuit breaker OPEN: {e}",
             "publications": [],
             "coauthors": [],
         })
+
+    for attempt in range(1, max_retries + 1):
+        timeout = 30.0 * (backoff_factor ** (attempt - 1))
+        try:
+            response = httpx.post(url, json=payload, timeout=timeout)
+            response.raise_for_status()
+            data = response.json()
+            result_text = data["artifacts"][0]["parts"][0]["text"]
+            history = json.loads(result_text)
+            langgraph_breaker.record_success()
+            logger.info(
+                "[Strands COI] ← LangGraph returned history for %s — coauthors: %s (attempt %d)",
+                editor_name,
+                history.get("coauthors", []),
+                attempt,
+            )
+            return json.dumps(history)
+
+        except Exception as e:
+            last_error = e
+            langgraph_breaker.record_failure(e)
+            if not is_transient(e) or attempt == max_retries:
+                break
+            wait = backoff_factor ** (attempt - 1)
+            logger.warning(
+                "[Strands COI] ↻ History fetch failed (attempt %d/%d: %s), retrying in %.1fs",
+                attempt, max_retries, e, wait,
+            )
+            time.sleep(wait)
+
+    # All retries exhausted — enqueue to DLQ
+    assert last_error is not None
+    langgraph_dlq.enqueue(
+        endpoint=url,
+        payload=payload,
+        error=last_error,
+        attempt=max_retries,
+        circuit_state=langgraph_breaker.state.value,
+        extra={"editor_name": editor_name},
+    )
+    logger.error("[Strands COI] Failed to fetch editor history after %d retries: %s", max_retries, last_error)
+    return json.dumps({
+        "editor": editor_name,
+        "error": str(last_error),
+        "publications": [],
+        "coauthors": [],
+    })
 
 
 # ─── Build the Strands COI Agent ─────────────────────────────────────────────
