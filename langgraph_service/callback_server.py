@@ -38,6 +38,10 @@ from langgraph_service.routes import (
     get_manuscript,
     health,
     list_editors,
+    resilience_dlq,
+    resilience_dlq_clear,
+    resilience_reset,
+    resilience_status,
     run_workflow,
 )
 
@@ -68,6 +72,10 @@ app = Starlette(
         Route("/run-workflow", run_workflow, methods=["POST"]),
         Route("/check-coi", check_coi_only, methods=["POST"]),
         Route("/finalize", finalize_assignment, methods=["POST"]),
+        Route("/resilience/status", resilience_status, methods=["GET"]),
+        Route("/resilience/dlq", resilience_dlq, methods=["GET"]),
+        Route("/resilience/dlq/clear", resilience_dlq_clear, methods=["POST"]),
+        Route("/resilience/reset", resilience_reset, methods=["POST"]),
     ],
 )
 

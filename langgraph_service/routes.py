@@ -36,10 +36,24 @@ from langgraph_service.scoring import (
     decide_hitl_mode,
     ScoreBreakdown,
 )
+from resilience import (
+    CircuitBreaker,
+    CircuitOpenError,
+    DeadLetterQueue,
+    resilient_post,
+)
 
 logger = logging.getLogger(__name__)
 
 STRANDS_URL = os.getenv("STRANDS_COI_URL", "http://localhost:8001")
+
+# ─── Resilience: circuit breaker + DLQ for Strands COI service ───────────────
+strands_breaker = CircuitBreaker(
+    service_name="strands-coi",
+    failure_threshold=int(os.getenv("CB_FAILURE_THRESHOLD", "3")),
+    recovery_timeout=float(os.getenv("CB_RECOVERY_TIMEOUT", "30")),
+)
+strands_dlq = DeadLetterQueue(service_name="strands-coi")
 
 
 # ─── Browse data endpoints ───────────────────────────────────────────────────
@@ -123,15 +137,36 @@ async def run_workflow(request: Request):
 
     logger.info("[Workflow] → A2A POST to Strands COI service")
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            coi_resp = await client.post(
-                f"{STRANDS_URL}/tasks/send", json=coi_payload
-            )
-            coi_resp.raise_for_status()
+        coi_resp = await resilient_post(
+            url=f"{STRANDS_URL}/tasks/send",
+            json_payload=coi_payload,
+            breaker=strands_breaker,
+            dlq=strands_dlq,
+            max_retries=3,
+            base_timeout=120.0,
+        )
+    except CircuitOpenError as e:
+        return JSONResponse(
+            {
+                "error": f"Circuit breaker OPEN for Strands COI — {e.failures} consecutive failures",
+                "retry_after_seconds": round(e.retry_after),
+                "circuit": strands_breaker.to_dict(),
+            },
+            status_code=503,
+        )
     except httpx.ConnectError:
         return JSONResponse(
             {"error": f"Strands COI service not running at {STRANDS_URL}"},
             status_code=503,
+        )
+    except Exception as e:
+        return JSONResponse(
+            {
+                "error": f"COI check failed after retries: {e}",
+                "dlq": strands_dlq.to_dict(),
+                "circuit": strands_breaker.to_dict(),
+            },
+            status_code=502,
         )
 
     coi_text = coi_resp.json()["artifacts"][0]["parts"][0]["text"]
@@ -231,15 +266,36 @@ async def check_coi_only(request: Request):
 
     logger.info("[check-coi] → A2A POST to Strands COI")
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            coi_resp = await client.post(
-                f"{STRANDS_URL}/tasks/send", json=coi_payload
-            )
-            coi_resp.raise_for_status()
+        coi_resp = await resilient_post(
+            url=f"{STRANDS_URL}/tasks/send",
+            json_payload=coi_payload,
+            breaker=strands_breaker,
+            dlq=strands_dlq,
+            max_retries=3,
+            base_timeout=120.0,
+        )
+    except CircuitOpenError as e:
+        return JSONResponse(
+            {
+                "error": f"Circuit breaker OPEN for Strands COI — {e.failures} consecutive failures",
+                "retry_after_seconds": round(e.retry_after),
+                "circuit": strands_breaker.to_dict(),
+            },
+            status_code=503,
+        )
     except httpx.ConnectError:
         return JSONResponse(
             {"error": f"Strands COI service not reachable at {STRANDS_URL}"},
             status_code=503,
+        )
+    except Exception as e:
+        return JSONResponse(
+            {
+                "error": f"COI check failed after retries: {e}",
+                "dlq": strands_dlq.to_dict(),
+                "circuit": strands_breaker.to_dict(),
+            },
+            status_code=502,
         )
 
     coi_text = coi_resp.json()["artifacts"][0]["parts"][0]["text"]
@@ -399,3 +455,34 @@ async def finalize_assignment(request: Request):
             },
         }
     )
+
+
+# ─── Resilience admin endpoints ──────────────────────────────────────────────
+
+async def resilience_status(request: Request):
+    """Return circuit breaker state and DLQ summary."""
+    return JSONResponse({
+        "circuit_breaker": strands_breaker.to_dict(),
+        "dlq": strands_dlq.to_dict(),
+    })
+
+
+async def resilience_dlq(request: Request):
+    """Return all DLQ entries (admin/replay)."""
+    return JSONResponse({
+        "service": strands_dlq.service_name,
+        "entries": strands_dlq.read_all(),
+        "count": strands_dlq.count(),
+    })
+
+
+async def resilience_dlq_clear(request: Request):
+    """Purge all DLQ entries."""
+    purged = strands_dlq.clear()
+    return JSONResponse({"purged": purged})
+
+
+async def resilience_reset(request: Request):
+    """Manually reset the circuit breaker to CLOSED."""
+    strands_breaker.reset()
+    return JSONResponse({"circuit_breaker": strands_breaker.to_dict()})

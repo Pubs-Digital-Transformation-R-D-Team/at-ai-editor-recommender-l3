@@ -40,6 +40,9 @@ Thumbs.db
 htmlcov/
 .tox/
 
+# Dead-letter queue (runtime data)
+.dlq/
+
 # AWS credentials (never commit)
 *.pem
 irsa_token.txt
