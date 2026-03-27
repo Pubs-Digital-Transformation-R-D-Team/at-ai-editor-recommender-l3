@@ -73,9 +73,55 @@ A2A Agent Cards:
 | Env var | Effect |
 |---------|--------|
 | `MOCK_COI=true` | Strands bypasses Bedrock, uses rule-based conflict detection |
-| *(unset)* | Both agents use Nova Premier via AWS Bedrock |
+| `MOCK_REACT=true` | LangGraph bypasses Bedrock, uses deterministic mock workflow |
+| *(both unset)* | Both agents use Nova Premier via AWS Bedrock |
 
 A2A calls between services are **always real HTTP** regardless of mock mode.
+
+---
+
+## Composite Scoring & HITL
+
+Each candidate editor is scored across **5 dimensions** (weighted):
+
+| Dimension | Weight | Source |
+|-----------|--------|--------|
+| Topic match | 30% | Keyword overlap with manuscript |
+| Capacity | 20% | Current workload vs max |
+| COI status | 20% | Flagged = 0, Approved = 100 |
+| Track record | 15% | Acceptance rate, avg review time |
+| Turnaround | 15% | Days to first decision |
+
+**HITL decision modes** (based on score gap between #1 and #2):
+
+| Mode | Condition | Behaviour |
+|------|-----------|----------|
+| `auto_assign` | Gap > 20 and no COI flags | System auto-assigns top editor |
+| `soft_review` | Gap 10–20 | Suggested pick, human confirms |
+| `full_hitl` | Gap < 10 or any COI flag | Human must choose |
+
+---
+
+## Tests
+
+Run the full suite (145 tests, ~4 s):
+
+```bash
+pytest
+```
+
+Run a specific file:
+```bash
+pytest tests/test_scoring.py -v
+```
+
+| Test file | Tests | Coverage |
+|-----------|-------|----------|
+| `test_callback_server.py` | 41 | Routes, A2A handler, agent card, editor utils, backward-compat imports |
+| `test_coi_agent.py` | 22 | JSON extraction, mock COI, system prompt, Strands agent card, health |
+| `test_scoring.py` | 38 | All 5 scoring dimensions, HITL thresholds, edge cases |
+| `test_fake_data.py` | 17 | Data integrity, manuscript/editor structure |
+| `test_streamlit_app.py` | 13 | UI helper functions |
 
 ---
 
@@ -176,19 +222,39 @@ In-cluster DNS:
 ├── fake_data.py                    # Test data (MS-999, 3 editors)
 ├── start.ps1                       # One-click launcher (PowerShell)
 ├── streamlit_app.py                # Streamlit HITL UI
-├── langgraph_service/
+├── pytest.ini                      # Test config (asyncio_mode=auto)
+├── pyproject.toml                  # Project metadata & dependencies
+│
+├── langgraph_service/              # Orchestrator agent — :8000
+│   ├── callback_server.py          # Entry point — assembles Starlette app
+│   ├── agent_card.py               # A2A Agent Card (assign_editor, editor_history)
+│   ├── a2a_handler.py              # A2A executor + SDK wiring + legacy adapter
+│   ├── routes.py                   # REST endpoints (health, editors, COI, finalize)
+│   ├── editor_utils.py             # Pure helpers (name parsing, reasoning, scoring)
+│   ├── scoring.py                  # 5-dimension composite scoring + HITL thresholds
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   └── callback_server.py          # Starlette :8000 — A2A SDK + REST endpoints
-├── strands_service/
+│   └── requirements.txt
+│
+├── strands_service/                # COI specialist agent — :8001
+│   ├── server.py                   # Entry point — assembles Starlette app
+│   ├── agent_card.py               # A2A Agent Card (check_conflicts)
+│   ├── a2a_handler.py              # A2A executor + SDK wiring + legacy adapter
+│   ├── coi_agent.py                # Strands agent with history tool (Bedrock/mock)
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── server.py                   # Starlette :8001 — A2A SDK COI endpoint
-│   └── coi_agent.py                # Strands agent with history tool
+│   └── requirements.txt
+│
+├── tests/                          # 145 unit tests (pytest + httpx ASGI)
+│   ├── test_callback_server.py     # LangGraph routes, A2A, agent card, compat (41)
+│   ├── test_coi_agent.py           # COI agent, Strands agent card, health (22)
+│   ├── test_scoring.py             # All scoring dimensions + HITL decisions (38)
+│   ├── test_fake_data.py           # Data integrity checks (17)
+│   └── test_streamlit_app.py       # UI helper functions (13)
+│
 ├── k8s/dev/
 │   ├── er-bedrock-sa.yaml          # IRSA ServiceAccount
 │   ├── langgraph-service/          # Deployment + Service
 │   └── strands-coi-service/        # Deployment + Service
+│
 └── .github/workflows/
     ├── docker-langgraph.yaml       # Builds on langgraph_service/** changes
     └── docker-strands.yaml         # Builds on strands_service/** changes
