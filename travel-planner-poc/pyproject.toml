@@ -1,0 +1,17 @@
+[project]
+name = "travel-planner-poc"
+version = "0.1.0"
+description = "Travel Planner Memory POC — Strands Agent + Postgres (L2 + L3)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "strands-agents>=0.1.0",
+    "strands-agents-bedrock>=0.1.0",
+    "psycopg2-binary>=2.9.9",
+    "streamlit>=1.40.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
