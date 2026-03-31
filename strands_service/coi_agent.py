@@ -26,6 +26,7 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 
 from resilience import CircuitBreaker, CircuitOpenError, DeadLetterQueue, is_transient
+from strands_service.agent_card import AGENT_CARD
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,8 @@ def build_coi_agent() -> Agent:
         model=model,
         tools=[get_editor_history],
         system_prompt=SYSTEM_PROMPT,
+        name=AGENT_CARD.name,
+        description=AGENT_CARD.description,
     )
     logger.info("[Strands COI] Agent initialized with model: %s", MODEL_ID)
     return agent

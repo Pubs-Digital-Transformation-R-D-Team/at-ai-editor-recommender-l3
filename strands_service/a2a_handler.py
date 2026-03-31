@@ -17,6 +17,7 @@ handled by the SDK.
 import asyncio
 import json
 import logging
+import os
 
 import httpx
 from starlette.requests import Request
@@ -38,8 +39,8 @@ from a2a.types import (
     TextPart,
 )
 
-from strands_service.agent_card import AGENT_CARD
-from strands_service.coi_agent import run_coi_check
+from strands_service.agent_card import AGENT_CARD, SKILLS
+from strands_service.coi_agent import MOCK_COI, build_coi_agent, run_coi_check
 
 logger = logging.getLogger(__name__)
 
@@ -144,19 +145,31 @@ class StrandsCOIExecutor(AgentExecutor):
 
 # ─── Build A2A SDK application ──────────────────────────────────────────────
 
-executor = StrandsCOIExecutor()
-task_store = InMemoryTaskStore()
-request_handler = DefaultRequestHandler(
-    agent_executor=executor,
-    task_store=task_store,
-)
-a2a_app = A2AStarletteApplication(
-    agent_card=AGENT_CARD,
-    http_handler=request_handler,
-)
+if MOCK_COI:
+    # Mock mode: use manual executor (no Bedrock credentials needed)
+    executor = StrandsCOIExecutor()
+    task_store = InMemoryTaskStore()
+    request_handler = DefaultRequestHandler(
+        agent_executor=executor,
+        task_store=task_store,
+    )
+    a2a_app = A2AStarletteApplication(
+        agent_card=AGENT_CARD,
+        http_handler=request_handler,
+    )
+    a2a_inner_app = a2a_app.build()
+else:
+    # Real mode: use Strands A2AServer (wraps the agent automatically)
+    from strands.multiagent.a2a.server import A2AServer
+
+    a2a_server = A2AServer(
+        agent=build_coi_agent(),
+        port=int(os.getenv("PORT", "8001")),
+        skills=SKILLS,
+    )
+    a2a_inner_app = a2a_server.to_starlette_app()
 
 #: The inner ASGI app that handles ``/.well-known/agent.json`` and ``POST /``
-a2a_inner_app = a2a_app.build()
 
 
 # ─── Legacy /tasks/send adapter ─────────────────────────────────────────────

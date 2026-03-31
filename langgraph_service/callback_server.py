@@ -45,14 +45,6 @@ from langgraph_service.routes import (
     run_workflow,
 )
 
-# ── Re-export helpers so existing imports (tests, etc.) keep working ─────────
-from langgraph_service.editor_utils import (  # noqa: F401
-    build_reasoning as _build_reasoning,
-    build_reasoning_points as _build_reasoning_points,
-    editor_details as _editor_details,
-    extract_editor_name as _extract_editor_name,
-)
-
 logging.basicConfig(
     level=logging.INFO,
     format="[LangGraph:8000] %(message)s",

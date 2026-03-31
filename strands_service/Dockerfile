@@ -14,6 +14,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copy service code and shared data
 COPY strands_service/ /app/strands_service/
 COPY fake_data.py /app/fake_data.py
+COPY resilience.py /app/resilience.py
 
 FROM base
 COPY --from=builder /usr/local/lib /usr/local/lib

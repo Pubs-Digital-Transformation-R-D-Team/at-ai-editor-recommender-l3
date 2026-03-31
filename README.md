@@ -171,18 +171,18 @@ A2A calls between services are **always real HTTP** regardless of mock mode.
 ## Tests
 
 ```bash
-pytest          # full suite (~145 tests, ~4s)
+pytest          # full suite (187 tests, ~4s)
 pytest -v -k test_scoring   # specific file
 ```
 
 | Test File | Tests | Covers |
 |-----------|-------|--------|
-| `test_callback_server.py` | 41 | Routes, A2A, agent card, editor utils |
-| `test_coi_agent.py` | 22 | COI agent, Strands card, health |
-| `test_scoring.py` | 38 | All 5 scoring dimensions, HITL thresholds |
-| `test_fake_data.py` | 17 | Data integrity |
+| `test_callback_server.py` | 39 | Routes, A2A, agent card, editor utils |
+| `test_coi_agent.py` | 24 | COI agent, Strands card, health |
+| `test_resilience.py` | 46 | Circuit breaker, DLQ, transient errors |
+| `test_scoring.py` | 45 | All 5 scoring dimensions, HITL thresholds |
+| `test_fake_data.py` | 20 | Data integrity |
 | `test_streamlit_app.py` | 13 | UI helpers |
-| `test_resilience.py` | — | Circuit breaker, DLQ |
 
 ---
 
@@ -241,7 +241,7 @@ In-cluster DNS:
 │   ├── coi_agent.py                #   Strands agent (Bedrock / mock)
 │   └── Dockerfile
 │
-├── tests/                          # ~145 unit tests
+├── tests/                          # 187 unit tests
 │
 ├── k8s/dev/                        # EKS manifests
 │

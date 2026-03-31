@@ -42,3 +42,6 @@ AGENT_CARD = AgentCard(
         ),
     ],
 )
+
+# Convenience alias used by A2AServer (real mode) in a2a_handler.py
+SKILLS = AGENT_CARD.skills

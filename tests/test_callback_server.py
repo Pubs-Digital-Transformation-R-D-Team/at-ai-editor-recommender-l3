@@ -373,30 +373,3 @@ class TestParseCOIResponse:
 #  Backward-compat re-exports from callback_server.py
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class TestBackwardCompatImports:
-    """Verify that the old underscore-prefixed names are still importable
-    from ``langgraph_service.callback_server`` so nothing breaks during
-    the transition.
-    """
-
-    def test_extract_editor_name_reexport(self):
-        from langgraph_service.callback_server import _extract_editor_name
-        assert _extract_editor_name("for: Dr. A") == "Dr. A"
-
-    def test_build_reasoning_reexport(self):
-        from langgraph_service.callback_server import _build_reasoning
-        editor = {"current_load": 0, "max_load": 5}
-        result = _build_reasoning("Dr. A", editor, matched=set(), flagged_names=set())
-        assert isinstance(result, str)
-
-    def test_build_reasoning_points_reexport(self):
-        from langgraph_service.callback_server import _build_reasoning_points
-        editor = {"current_load": 0, "max_load": 5, "expertise": []}
-        result = _build_reasoning_points("Dr. A", editor, matched=set(), flagged_names=set())
-        assert isinstance(result, list)
-
-    def test_editor_details_reexport(self):
-        from langgraph_service.callback_server import _editor_details
-        result = _editor_details("Dr. Kevin Lee", {"approved": ["Dr. Kevin Lee"], "flagged": []})
-        assert "name" in result
-
